@@ -36,12 +36,14 @@ class CrewManager:
             # Create tasks
             research_task = CrewTask(
                 description=f"Research the following topic: {task_description}",
-                agent=researcher
+                agent=researcher,
+                expected_output="Detailed research findings and analysis"
             )
 
             write_task = CrewTask(
                 description="Create a comprehensive response based on the research",
-                agent=writer
+                agent=writer,
+                expected_output="Well-formatted final response incorporating research findings"
             )
 
             # Create and run crew
