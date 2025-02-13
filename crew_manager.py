@@ -71,11 +71,18 @@ class CrewManager:
     def format_result(self, result):
         """Format the result into a clean JSON array of items"""
         try:
-            # Get result string
-            result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
+            # First try to get JSON result
+            if hasattr(result, 'json'):
+                result_str = result.json
+            # Then try raw result
+            elif hasattr(result, 'raw'):
+                result_str = str(result.raw)
+            # Finally fall back to string representation
+            else:
+                result_str = str(result)
 
             try:
-                # Try to parse the result as JSON first
+                # Try to parse the result as JSON
                 parsed_result = json.loads(result_str)
                 # If it's already in our expected format, return it
                 if isinstance(parsed_result, dict) and ("items" in parsed_result or "error" in parsed_result):
@@ -86,8 +93,8 @@ class CrewManager:
                 # Otherwise wrap the object in our standard format
                 return {"items": [parsed_result]}
             except json.JSONDecodeError:
-                # Since we now have a dedicated JSON conversion task, this should rarely happen
-                return {"error": "Invalid JSON format in result"}
+                # If JSON parsing fails, wrap the raw string in our standard format
+                return {"items": [{"raw_output": result_str}]}
 
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
