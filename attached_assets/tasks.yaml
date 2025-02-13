@@ -58,21 +58,6 @@ detail_extraction_task:
           mixed_batch:
             type: dict
             description: MOQ and mixed order requirements
-          product_props:
-            type: list
-            description: Product properties and specifications
-          shop_info:
-            type: dict
-            description: Seller/shop information
-          service_tags:
-            type: list
-            description: Available service guarantees
-          stock:
-            type: int
-            description: Available inventory
-          skus:
-            type: list
-            description: Available variants with prices and specifications
   dependencies:
     - search_task
 
@@ -81,7 +66,9 @@ ranking_task:
     Perform evaluation candidate products based on relevance to the original query, product quality, price, and MOQ.
     Ensure that selected product variant meets the buyer's requirements.
   expected_output: >
-    A ranked list of candidate products with the optimal product clearly identified.
+    A ranked list of top 5 products with their details.
+    For each product include: name, price (with currency), MOQ, and direct URL.
+    Format the output as a clear list with these key details only.
   agent: ranking_agent
   output_format:
     type: dict
@@ -89,25 +76,50 @@ ranking_task:
     fields:
       ranked_products:
         type: list
-        description: Ranked list of products with scores
+        description: Ranked list of products
         item_fields:
-          item_id:
+          name:
             type: str
-            description: Product identifier
-          product_url:
+            description: Product name/title
+          price:
             type: str
-            description: Direct URL to the product page
-          rank:
-            type: int
-            description: Ranking position (1 being the best)
-          score:
-            type: float
-            description: Overall score (0-100)
-          product_details:
-            type: dict
-            description: Complete product details from previous task
-          ranking_factors:
-            type: dict
-            description: Scores for individual ranking criteria (price, quality, relevance, etc.)
+            description: Price with currency
+          moq:
+            type: str
+            description: Minimum order quantity
+          url:
+            type: str
+            description: Direct URL to product
   dependencies:
     - detail_extraction_task
+
+json_conversion_task:
+  description: >
+    Convert the ranked products list into a clean JSON array containing only the essential information.
+  expected_output: >
+    A JSON array where each item contains: name, price, MOQ, and URL.
+    Remove all markdown formatting and unnecessary text.
+    The output must be valid JSON that can be parsed by JSON.parse().
+  agent: json_conversion_agent
+  output_format:
+    type: dict
+    description: Clean JSON output
+    fields:
+      items:
+        type: list
+        description: Array of product items
+        item_fields:
+          name:
+            type: str
+            description: Product name
+          price:
+            type: str
+            description: Price including currency
+          moq:
+            type: str
+            description: Minimum order quantity
+          url:
+            type: str
+            description: Product URL
+  dependencies:
+    - ranking_task

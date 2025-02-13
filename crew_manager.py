@@ -86,38 +86,8 @@ class CrewManager:
                 # Otherwise wrap the object in our standard format
                 return {"items": [parsed_result]}
             except json.JSONDecodeError:
-                # For text results, extract structured data
-                items = []
-                current_item = {}
-
-                # Split by clear item indicators and parse
-                for line in result_str.split('\n'):
-                    line = line.strip()
-                    if not line:
-                        if current_item:
-                            items.append(current_item.copy())
-                            current_item = {}
-                        continue
-
-                    # Extract structured data from line
-                    if 'name:' in line.lower() or 'title:' in line.lower():
-                        current_item['name'] = line.split(':', 1)[1].strip()
-                    elif 'price:' in line.lower():
-                        current_item['price'] = line.split(':', 1)[1].strip()
-                    elif 'moq:' in line.lower():
-                        current_item['moq'] = line.split(':', 1)[1].strip()
-                    elif 'url:' in line.lower() or 'link:' in line.lower():
-                        url = line.split(':', 1)[1].strip()
-                        # Clean URL if it's in markdown format
-                        if url.startswith('[') and '](' in url:
-                            url = url.split('](')[1].rstrip(')')
-                        current_item['url'] = url
-
-                # Add last item if exists
-                if current_item:
-                    items.append(current_item)
-
-                return {"items": items} if items else {"error": "No items could be extracted"}
+                # Since we now have a dedicated JSON conversion task, this should rarely happen
+                return {"error": "Invalid JSON format in result"}
 
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
