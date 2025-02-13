@@ -2,7 +2,7 @@ import os
 import logging
 import jwt
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, make_response
 from flask_swagger_ui import get_swaggerui_blueprint
 from database import db
 import threading
@@ -45,6 +45,13 @@ swaggerui_blueprint = get_swaggerui_blueprint(
 )
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
+@app.before_request
+def enforce_json():
+    """Enforce JSON for all POST requests"""
+    if request.method == "POST":
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 415
+
 def generate_task_token(task_id):
     """Generate JWT token for task tracking"""
     payload = {
@@ -66,14 +73,26 @@ def process_task_async(task_id, task_description):
 
 @app.route('/')
 def home():
-    """Redirect root to Swagger UI"""
-    return render_template('docs.html')
+    """API root endpoint"""
+    return jsonify({
+        'status': 'online',
+        'version': '1.0',
+        'documentation': f'{request.url_root}{SWAGGER_URL}',
+        'endpoints': {
+            'tasks': f'{request.url_root}api/tasks',
+            'task_status': f'{request.url_root}api/tasks/<task_id>',
+            'dashboard': f'{request.url_root}tasks'
+        }
+    })
 
 @app.route('/tasks')
 def task_dashboard():
-    """Display task monitoring dashboard"""
+    """Return task monitoring data in JSON format"""
     tasks = task_queue.get_all_tasks()
-    return render_template('tasks.html', tasks=tasks)
+    return jsonify({
+        'tasks': tasks,
+        'count': len(tasks)
+    })
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
@@ -141,6 +160,15 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    """Handle all unhandled exceptions"""
+    logger.error(f"Unhandled exception: {str(error)}", exc_info=True)
+    return jsonify({
+        'error': 'Internal server error',
+        'message': str(error)
+    }), 500
 
 # Create database tables
 with app.app_context():
