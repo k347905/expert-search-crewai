@@ -3,6 +3,7 @@ import logging
 import jwt
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
+from flask_swagger_ui import get_swaggerui_blueprint
 from database import db
 
 # Configure logging
@@ -29,6 +30,19 @@ from crew_manager import CrewManager
 # Initialize task queue and crew manager
 task_queue = TaskQueue()
 crew_manager = CrewManager()
+
+# Swagger configuration
+SWAGGER_URL = '/swagger'
+API_URL = '/static/swagger.json'
+
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={
+        'app_name': "CrewAI Task API"
+    }
+)
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 def generate_task_token(task_id):
     """Generate JWT token for task tracking"""
