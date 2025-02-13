@@ -1,4 +1,105 @@
-markers or other decorative elements.
+translation_task:
+  description: >
+    Translate the buyer's query "{query}" into a precise Chinese query suitable for effective searches on 1688.com.
+  expected_output: >
+    A translated query string that accurately reflects the buyer's intent.
+  agent: translation_agent
+  output_format:
+    type: dict
+    description: The translation output containing the Chinese query
+    fields:
+      translated_query:
+        type: str
+        description: The Chinese translation of the input query
+
+search_task:
+  description: >
+    Search for the translated query on 1688.com using the provided tool.
+  expected_output: >
+    A list with 5-10 candidate items that best match the translated query.
+  agent: search_expert
+  output_format:
+    type: dict
+    description: Search results from 1688.com
+    fields:
+      search_results:
+        type: list
+        description: List of products found on 1688.com
+  dependencies:
+    - translation_task
+
+detail_extraction_task:
+  description: >
+    Retrieve comprehensive details for each candidate item from the search results.
+  expected_output: >
+    A detailed list of candidate products including variants, pricing, MOQ, and quality metrics.
+    Keep only product variants that meet the buyer's requirements, remove other variants.
+  agent: detail_extraction_agent
+  output_format:
+    type: dict
+    description: Detailed product information
+    fields:
+      detailed_products:
+        type: list
+        description: Detailed information for each candidate product
+        item_fields:
+          item_id: 
+            type: str
+            description: Unique identifier for the product
+          product_url:
+            type: str
+            description: URL to the product page
+          title:
+            type: str
+            description: Product title
+          price_info:
+            type: dict
+            description: Price information including min/max prices
+          mixed_batch:
+            type: dict
+            description: MOQ and mixed order requirements
+  dependencies:
+    - search_task
+
+ranking_task:
+  description: >
+    Perform evaluation candidate products based on relevance to the original query, product quality, price, and MOQ.
+    Ensure that selected product variant meets the buyer's requirements.
+  expected_output: >
+    A ranked list of top 5 products with their details.
+    For each product include: name, price (with currency), MOQ, and direct URL.
+    Format the output as a clear list with these key details only.
+  agent: ranking_agent
+  output_format:
+    type: dict
+    description: Ranked product results
+    fields:
+      ranked_products:
+        type: list
+        description: Ranked list of products
+        item_fields:
+          name:
+            type: str
+            description: Product name/title
+          price:
+            type: str
+            description: Price with currency
+          moq:
+            type: str
+            description: Minimum order quantity
+          url:
+            type: str
+            description: Direct URL to product
+  dependencies:
+    - detail_extraction_task
+
+json_conversion_task:
+  description: >
+    Convert the ranked products list into a clean JSON array containing only the essential information.
+  expected_output: >
+    A JSON array where each item contains: name, price, MOQ, and URL.
+    Remove all markdown formatting and unnecessary text.
+    The output must be valid JSON that can be parsed by JSON.parse().
   agent: json_conversion_agent
   output_format:
     type: dict
