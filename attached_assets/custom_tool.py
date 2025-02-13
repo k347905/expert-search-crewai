@@ -13,9 +13,11 @@ CACHE_DIR = "api_cache"
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
+
 class MyCustomToolInput(BaseModel):
     """Input schema for MyCustomTool."""
     argument: str = Field(..., description="Description of the argument.")
+
 
 class MyCustomTool(BaseTool):
     name: str = "Name of my tool"
@@ -28,9 +30,15 @@ class MyCustomTool(BaseTool):
         # Implementation goes here
         return "this is an example of a tool output, ignore it and move along."
 
+
 from crewai.tools import tool
+
+
 @tool("search1688")
-def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sales") -> str:
+def search1688(query: str,
+               page: int = 1,
+               page_size: int = 20,
+               sort: str = "sales") -> str:
     """Search items on 1688.com using the API.
         
         Args:
@@ -45,7 +53,7 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
     api_token = (
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VybmFtZSI6ImlsZ2l6IiwiQ29taWQiOm51bGwsIlJvbGVpZCI6bnVsbCwiaXNzIjoidG1hcGkiLCJzdWIiOiJpbGdpeiIsImF1ZCI6WyIiXSwiaWF0IjoxNzM4NzYzMTg1fQ.tTzyOqooykFSJcw8ZOQ0sGkGki7BTRluiV7YT-e8HIc"
     )
-    
+
     endpoint = f"{base_url}/search/items"
     params = {
         "page": page,
@@ -54,9 +62,10 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
         "sort": sort,
         "apiToken": api_token
     }
-    
+
     # Create a unique key for caching based on the search parameters.
-    key = hashlib.md5(f"{query}_{page}_{page_size}_{sort}".encode("utf-8")).hexdigest()
+    key = hashlib.md5(
+        f"{query}_{page}_{page_size}_{sort}".encode("utf-8")).hexdigest()
     cache_file = os.path.join(CACHE_DIR, f"search_{key}.json")
 
     if API_MODE == "mocked_data":
@@ -86,12 +95,11 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
                 "price": item.get("price", "")
             }
             items.append(formatted_item)
-        
+
         return items
     else:
         error_msg = f"API Error: {data.get('msg', 'Unknown error')}"
         return []
-
 
 
 # ---------------------------
@@ -112,7 +120,7 @@ def item_detail(item_id: int) -> dict:
     api_token = (
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VybmFtZSI6ImlsZ2l6IiwiQ29taWQiOm51bGwsIlJvbGVpZCI6bnVsbCwiaXNzIjoidG1hcGkiLCJzdWIiOiJpbGdpeiIsImF1ZCI6WyIiXSwiaWF0IjoxNzM4NzYzMTg1fQ.tTzyOqooykFSJcw8ZOQ0sGkGki7BTRluiV7YT-e8HIc"
     )
-    
+
     endpoint = f"{base_url}/v2/item_detail"
     params = {
         "item_id": item_id,

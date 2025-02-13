@@ -69,24 +69,56 @@ class CrewManager:
         )
 
     def format_result(self, result):
-        """Format the result into a standardized JSON structure"""
+        """Format the result into a clean JSON array of items"""
         try:
-            # If result has raw attribute, use it
+            # Get result string
             result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
 
             try:
                 # Try to parse the result as JSON first
                 parsed_result = json.loads(result_str)
                 # If it's already in our expected format, return it
-                if isinstance(parsed_result, list) or "error" in parsed_result:
+                if isinstance(parsed_result, dict) and ("items" in parsed_result or "error" in parsed_result):
                     return parsed_result
-                # Otherwise, wrap it in our standard format
-                return {"items": [parsed_result] if not isinstance(parsed_result, list) else parsed_result}
+                # If it's a list, wrap it in our standard format
+                if isinstance(parsed_result, list):
+                    return {"items": parsed_result}
+                # Otherwise wrap the object in our standard format
+                return {"items": [parsed_result]}
             except json.JSONDecodeError:
-                # If it's not JSON, wrap the text in our standard format
-                if "error" in result_str.lower():
-                    return {"error": result_str}
-                return {"items": [{"text": result_str}]}
+                # For text results, extract structured data
+                items = []
+                current_item = {}
+
+                # Split by clear item indicators and parse
+                for line in result_str.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        if current_item:
+                            items.append(current_item.copy())
+                            current_item = {}
+                        continue
+
+                    # Extract structured data from line
+                    if 'name:' in line.lower() or 'title:' in line.lower():
+                        current_item['name'] = line.split(':', 1)[1].strip()
+                    elif 'price:' in line.lower():
+                        current_item['price'] = line.split(':', 1)[1].strip()
+                    elif 'moq:' in line.lower():
+                        current_item['moq'] = line.split(':', 1)[1].strip()
+                    elif 'url:' in line.lower() or 'link:' in line.lower():
+                        url = line.split(':', 1)[1].strip()
+                        # Clean URL if it's in markdown format
+                        if url.startswith('[') and '](' in url:
+                            url = url.split('](')[1].rstrip(')')
+                        current_item['url'] = url
+
+                # Add last item if exists
+                if current_item:
+                    items.append(current_item)
+
+                return {"items": items} if items else {"error": "No items could be extracted"}
+
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
             return {"error": str(e)}
