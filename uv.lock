@@ -2346,6 +2346,7 @@ dependencies = [
     { name = "openai" },
     { name = "psycopg2-binary" },
     { name = "pyjwt" },
+    { name = "pyyaml" },
     { name = "sqlalchemy" },
 ]
 
@@ -2362,6 +2363,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.62.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },
 ]
 

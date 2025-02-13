@@ -1,5 +1,6 @@
 import logging
 import os
+import yaml
 from crewai import Task as CrewTask, Agent, Crew
 from tasks import TaskQueue
 from database import db
@@ -11,71 +12,64 @@ class CrewManager:
         self.task_queue = TaskQueue()
         self.api_key = os.environ.get("OPENAI_API_KEY")
 
-    def create_agents(self):
-        """Create CrewAI agents"""
-        researcher = Agent(
-            role='Researcher',
-            goal='Research and analyze the given task thoroughly',
-            backstory='Expert at gathering and analyzing information',
+        # Load agent and task configurations
+        with open('attached_assets/agents.yaml', 'r') as f:
+            self.agent_configs = yaml.safe_load(f)
+        with open('attached_assets/tasks.yaml', 'r') as f:
+            self.task_configs = yaml.safe_load(f)
+
+    def create_agent(self, agent_name, config):
+        """Create a CrewAI agent from configuration"""
+        return Agent(
+            role=config['role'],
+            goal=config['goal'].format(query="{query}"),  # Allow for query formatting
+            backstory=config['backstory'],
             verbose=True,
             allow_delegation=False,
-            tools=[],
             llm_config={
                 "model": "gpt-4",
                 "api_key": self.api_key
             }
         )
 
-        writer = Agent(
-            role='Writer',
-            goal='Create well-written responses based on research',
-            backstory='Expert at creating clear and concise content',
-            verbose=True,
-            allow_delegation=False,
-            tools=[],
-            llm_config={
-                "model": "gpt-4",
-                "api_key": self.api_key
-            }
+    def create_task(self, task_name, config, agent, query):
+        """Create a CrewAI task from configuration"""
+        return CrewTask(
+            description=config['description'].format(query=query),
+            agent=agent,
+            expected_output=config['expected_output']
         )
 
-        return researcher, writer
-
-    def process_task(self, task_id: str, task_description: str):
-        """Process a task using CrewAI"""
+    def process_task(self, task_id: str, query: str):
+        """Process a task using CrewAI with the configured agents"""
         try:
             logger.info(f"Starting to process task {task_id}")
 
             # Create agents
-            researcher, writer = self.create_agents()
+            agents = {
+                name: self.create_agent(name, config)
+                for name, config in self.agent_configs.items()
+            }
 
             # Create tasks
-            research_task = CrewTask(
-                description=f"Research the following topic: {task_description}",
-                agent=researcher,
-                expected_output="Detailed research findings and analysis"
-            )
-
-            write_task = CrewTask(
-                description="Create a comprehensive response based on the research",
-                agent=writer,
-                expected_output="Well-formatted final response incorporating research findings"
-            )
+            tasks = []
+            for task_name, config in self.task_configs.items():
+                agent = agents[config['agent']]
+                task = self.create_task(task_name, config, agent, query)
+                tasks.append(task)
 
             # Create and run crew
             crew = Crew(
-                agents=[researcher, writer],
-                tasks=[research_task, write_task]
+                agents=list(agents.values()),
+                tasks=tasks
             )
 
             # Execute the tasks
             result = crew.kickoff()
             logger.info(f"Task {task_id} completed successfully")
 
-            # Convert CrewOutput to string before storing
+            # Convert CrewOutput to string and store result
             result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
-
-            # Update task status
             self.task_queue.update_task(
                 task_id=task_id,
                 status='completed',
