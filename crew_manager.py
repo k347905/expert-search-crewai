@@ -62,17 +62,31 @@ class CrewManager:
     def create_task(self, task_name, config, agent, query):
         """Create a CrewAI task from configuration"""
         logger.debug(f"Creating task: {task_name} with query: {query}")
+        # Ensure the expected output format is specified for JSON
+        expected_output = """
+        {
+            "output_json": {
+                "items": [/* Array of result items */],
+                "metadata": {
+                    "query": "query string",
+                    "timestamp": "ISO timestamp"
+                }
+            }
+        }
+        """
         return CrewTask(
             description=config['description'].format(query=query),
             agent=agent,
-            expected_output=config['expected_output']
+            expected_output=expected_output
         )
 
     def format_result(self, result):
         """Format the result into a clean JSON array of items"""
         try:
             # First try to get JSON result
-            if hasattr(result, 'json'):
+            if hasattr(result, 'output_json'):
+                return result.output_json
+            elif hasattr(result, 'json'):
                 result_str = result.json
             # Then try raw result
             elif hasattr(result, 'raw'):
