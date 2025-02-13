@@ -17,6 +17,11 @@ async function tryCreateTask() {
         currentTaskId = data.task_id;
         currentToken = data.token;
 
+        // Store the token in localStorage
+        if (data.task_id && data.token) {
+            localStorage.setItem(`task_token_${data.task_id}`, data.token);
+        }
+
         document.getElementById('response').textContent = JSON.stringify(data, null, 2);
     } catch (error) {
         document.getElementById('response').textContent = `Error: ${error.message}`;

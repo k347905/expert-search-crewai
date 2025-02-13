@@ -6,14 +6,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function viewTaskDetails(taskId) {
     try {
+        const token = localStorage.getItem(`task_token_${taskId}`);
+        if (!token) {
+            throw new Error('Task token not found. Please create the task again.');
+        }
+
         const response = await fetch(`/api/tasks/${taskId}`, {
             headers: {
-                'Authorization': localStorage.getItem(`task_token_${taskId}`)
+                'Authorization': token
             }
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch task details');
+            if (response.status === 401) {
+                throw new Error('Unauthorized: Invalid or expired token');
+            }
+            throw new Error(`Failed to fetch task details: ${response.statusText}`);
         }
 
         const task = await response.json();
@@ -35,7 +43,7 @@ async function viewTaskDetails(taskId) {
         taskDetailsModal.show();
     } catch (error) {
         console.error('Error fetching task details:', error);
-        alert('Error fetching task details. Please try again.');
+        alert(error.message);
     }
 }
 
