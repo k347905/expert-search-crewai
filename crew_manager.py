@@ -28,11 +28,17 @@ class CrewManager:
         self.task_queue = TaskQueue()
         self.api_key = os.environ.get("OPENAI_API_KEY")
 
-        # Load agent and task configurations
-        with open('attached_assets/agents.yaml', 'r') as f:
-            self.agent_configs = yaml.safe_load(f)
-        with open('attached_assets/tasks.yaml', 'r') as f:
-            self.task_configs = yaml.safe_load(f)
+        # Load agent and task configurations from root directory
+        logger.debug("Loading agent and task configurations")
+        try:
+            with open('agents.yaml', 'r') as f:
+                self.agent_configs = yaml.safe_load(f)
+            with open('tasks.yaml', 'r') as f:
+                self.task_configs = yaml.safe_load(f)
+            logger.debug("Configuration files loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading configuration files: {str(e)}")
+            raise
 
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
@@ -44,10 +50,34 @@ class CrewManager:
         elif agent_name == "detail_extraction_agent":
             tools = [item_detail]
 
+        # Add instructions for JSON output format
+        output_format = """
+You must provide output in the following JSON format:
+{
+    "output_json": {
+        "items": [
+            {
+                "id": "string",
+                "name": "string",
+                "description": "string",
+                "price": "number",
+                "url": "string"
+            }
+        ],
+        "metadata": {
+            "query": "string",
+            "timestamp": "ISO string"
+        }
+    }
+}
+"""
+        # Append output format to backstory
+        enhanced_backstory = f"{config['backstory']}\n\n{output_format}"
+
         agent = Agent(
             role=config['role'],
             goal=config['goal'].format(query="{query}"),  # Allow for query formatting
-            backstory=config['backstory'],
+            backstory=enhanced_backstory,
             verbose=True,
             allow_delegation=False,
             tools=tools,
@@ -62,57 +92,41 @@ class CrewManager:
     def create_task(self, task_name, config, agent, query):
         """Create a CrewAI task from configuration"""
         logger.debug(f"Creating task: {task_name} with query: {query}")
-        # Ensure the expected output format is specified for JSON
-        expected_output = """
-        {
+
+        # Define expected output format
+        output_format = {
             "output_json": {
-                "items": [/* Array of result items */],
+                "items": [
+                    {
+                        "id": "string",
+                        "name": "string",
+                        "description": "string",
+                        "price": "number",
+                        "url": "string"
+                    }
+                ],
                 "metadata": {
-                    "query": "query string",
-                    "timestamp": "ISO timestamp"
+                    "query": query,
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             }
         }
-        """
+
+        # Enhance task description with output requirements
+        enhanced_description = f"""
+{config['description'].format(query=query)}
+
+You MUST format your response as a JSON object with the following structure:
+{json.dumps(output_format, indent=2)}
+
+Set this as the output_json property of your response.
+"""
+
         return CrewTask(
-            description=config['description'].format(query=query),
+            description=enhanced_description,
             agent=agent,
-            expected_output=expected_output
+            expected_output=json.dumps(output_format, indent=2)
         )
-
-    def format_result(self, result):
-        """Format the result into a clean JSON array of items"""
-        try:
-            # First try to get JSON result
-            if hasattr(result, 'output_json'):
-                return result.output_json
-            elif hasattr(result, 'json'):
-                result_str = result.json
-            # Then try raw result
-            elif hasattr(result, 'raw'):
-                result_str = str(result.raw)
-            # Finally fall back to string representation
-            else:
-                result_str = str(result)
-
-            try:
-                # Try to parse the result as JSON
-                parsed_result = json.loads(result_str)
-                # If it's already in our expected format, return it
-                if isinstance(parsed_result, dict) and ("items" in parsed_result or "error" in parsed_result):
-                    return parsed_result
-                # If it's a list, wrap it in our standard format
-                if isinstance(parsed_result, list):
-                    return {"items": parsed_result}
-                # Otherwise wrap the object in our standard format
-                return {"items": [parsed_result]}
-            except json.JSONDecodeError:
-                # If JSON parsing fails, wrap the raw string in our standard format
-                return {"items": [{"raw_output": result_str}]}
-
-        except Exception as e:
-            logger.error(f"Error formatting result: {str(e)}")
-            return {"error": str(e)}
 
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
@@ -192,3 +206,7 @@ class CrewManager:
                 status='failed',
                 result=json.dumps(error_output, ensure_ascii=False)
             )
+
+    def format_result(self, result):
+        #This function is not defined in original code,  but needed for completeness.  A simple placeholder.
+        return result
