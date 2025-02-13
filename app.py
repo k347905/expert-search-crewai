@@ -57,15 +57,23 @@ def process_task_async(task_id, task_description):
     """Process task asynchronously"""
     with app.app_context():
         try:
+            logger.info(f"Starting task {task_id} processing")
             crew_manager.process_task(task_id, task_description)
+            logger.info(f"Task {task_id} completed successfully")
         except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}")
+            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
             task_queue.update_task(task_id, 'failed', str(e))
 
 @app.route('/')
 def home():
     """Redirect root to Swagger UI"""
     return render_template('docs.html')
+
+@app.route('/tasks')
+def task_dashboard():
+    """Display task monitoring dashboard"""
+    tasks = task_queue.get_all_tasks()
+    return render_template('tasks.html', tasks=tasks)
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
@@ -77,6 +85,9 @@ def create_task():
 
         task_id = task_queue.add_task(data['task'])
         token = generate_task_token(task_id)
+
+        # Store token in task metadata for dashboard access
+        task_queue.update_task_metadata(task_id, {'token': token})
 
         # Start task processing in a background thread
         thread = threading.Thread(

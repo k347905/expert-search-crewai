@@ -7,14 +7,18 @@ import json
 import hashlib
 
 # Set API_MODE to either "online" or "mocked_data" (default: online)
-API_MODE = os.getenv("API_MODE", "online").lower()
+API_MODE = os.getenv("API_MODE", "mocked_data").lower()
 CACHE_DIR = "api_cache"
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
+
 @tool("search1688")
-def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sales") -> dict:
+def search1688(query: str,
+               page: int = 1,
+               page_size: int = 20,
+               sort: str = "sales") -> dict:
     """Search items on 1688.com using the API.
         
     Args:
@@ -27,7 +31,7 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
         dict: List of items with their details."""
     base_url = "http://api.tmapi.top/1688"
     api_token = os.environ.get("TMAPI_TOKEN")
-    
+
     endpoint = f"{base_url}/search/items"
     params = {
         "page": page,
@@ -36,9 +40,10 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
         "sort": sort,
         "apiToken": api_token
     }
-    
+
     # Create a unique key for caching based on the search parameters
-    key = hashlib.md5(f"{query}_{page}_{page_size}_{sort}".encode("utf-8")).hexdigest()
+    key = hashlib.md5(
+        f"{query}_{page}_{page_size}_{sort}".encode("utf-8")).hexdigest()
     cache_file = os.path.join(CACHE_DIR, f"search_{key}.json")
 
     if API_MODE == "mocked_data":
@@ -71,6 +76,7 @@ def search1688(query: str, page: int = 1, page_size: int = 20, sort: str = "sale
     else:
         return {"items": [], "error": data.get("msg", "Unknown error")}
 
+
 @tool("item_detail")
 def item_detail(item_id: str) -> dict:
     """Get detailed information about an item on 1688.com using its item_id.
@@ -83,7 +89,7 @@ def item_detail(item_id: str) -> dict:
     """
     base_url = "http://api.tmapi.top/1688"
     api_token = os.environ.get("TMAPI_TOKEN")
-    
+
     endpoint = f"{base_url}/v2/item_detail"
     params = {
         "item_id": item_id,

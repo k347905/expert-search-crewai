@@ -9,6 +9,7 @@ class Task(db.Model):
     result = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
+    task_metadata = db.Column(db.JSON)  # Renamed from metadata to task_metadata
 
     def __init__(self, id, description):
         self.id = id
@@ -17,6 +18,7 @@ class Task(db.Model):
         self.result = None
         self.created_at = datetime.utcnow()
         self.completed_at = None
+        self.task_metadata = {}
 
     def to_dict(self):
         """Convert task to dictionary representation"""
@@ -26,7 +28,8 @@ class Task(db.Model):
             'status': self.status,
             'result': self.result,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'metadata': self.task_metadata  # Keep the API response consistent
         }
 
     def update_status(self, status, result=None):
