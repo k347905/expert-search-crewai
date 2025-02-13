@@ -91,7 +91,18 @@
                         </div>
                         <div>
                             <h6>Task Result</h6>
-                            <pre id="modalTaskResult" class="task-result bg-dark text-light p-3 rounded">No result available</pre>
+                            <div class="nav nav-tabs" role="tablist">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#result" type="button">Result</button>
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#logs" type="button">Logs</button>
+                            </div>
+                            <div class="tab-content mt-2">
+                                <div class="tab-pane fade show active" id="result">
+                                    <pre id="modalTaskResult" class="task-result bg-dark text-light p-3 rounded">No result available</pre>
+                                </div>
+                                <div class="tab-pane fade" id="logs">
+                                    <pre id="modalTaskLogs" class="task-result bg-dark text-light p-3 rounded">No logs available</pre>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

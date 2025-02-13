@@ -37,7 +37,21 @@ async function viewTaskDetails(taskId, token) {
             formatDate(task.completed_at) : 'Not completed';
 
         const resultPre = document.getElementById('modalTaskResult');
-        resultPre.textContent = task.result || 'No result available';
+        const logsPre = document.getElementById('modalTaskLogs');
+
+        if (task.result) {
+            const parts = task.result.split('\nExecution Logs:\n');
+            if (parts.length > 1) {
+                resultPre.textContent = parts[0].replace('Result:\n', '');
+                logsPre.textContent = parts[1];
+            } else {
+                resultPre.textContent = task.result;
+                logsPre.textContent = 'No logs available';
+            }
+        } else {
+            resultPre.textContent = 'No result available';
+            logsPre.textContent = 'No logs available';
+        }
 
         taskDetailsModal.show();
     } catch (error) {
