@@ -4,11 +4,10 @@ document.addEventListener('DOMContentLoaded', function() {
     taskDetailsModal = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
 });
 
-async function viewTaskDetails(taskId) {
+async function viewTaskDetails(taskId, token) {
     try {
-        const token = localStorage.getItem(`task_token_${taskId}`);
         if (!token) {
-            throw new Error('Task token not found. Please create the task again.');
+            throw new Error('Task token not available');
         }
 
         const response = await fetch(`/api/tasks/${taskId}`, {

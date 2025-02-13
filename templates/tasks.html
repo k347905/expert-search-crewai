@@ -46,9 +46,16 @@
                                 <td>{{ task.created_at }}</td>
                                 <td>{{ task.completed_at or 'N/A' }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-info" onclick="viewTaskDetails('{{ task.id }}')">
+                                    {% if task.metadata and task.metadata.token %}
+                                    <button class="btn btn-sm btn-info" 
+                                            onclick="viewTaskDetails('{{ task.id }}', '{{ task.metadata.token }}')">
                                         View Details
                                     </button>
+                                    {% else %}
+                                    <button class="btn btn-sm btn-secondary" disabled title="Token not available">
+                                        View Details
+                                    </button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
