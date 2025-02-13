@@ -1,6 +1,7 @@
 from typing import Dict, Optional, List
 import requests
 import logging
+import json # Added import for json handling
 from database import db
 from models import Task
 import uuid
@@ -55,11 +56,21 @@ class TaskQueue:
             return
 
         try:
+            # Extract items from task result if available
+            items = []
+            if task.result:
+                try:
+                    result_data = json.loads(task.result)
+                    if isinstance(result_data, dict) and 'result' in result_data:
+                        items = result_data['result'].get('items', [])
+                except json.JSONDecodeError:
+                    logger.warning(f"Could not parse task result as JSON for task {task.id}")
+                    items = []
+
+            # Simplified payload with only items and task_id
             payload = {
                 'task_id': task.id,
-                'status': task.status,
-                'result': task.result,
-                'completed_at': task.completed_at.isoformat() if task.completed_at else None
+                'items': items
             }
 
             response = requests.post(
