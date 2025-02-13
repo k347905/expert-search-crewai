@@ -44,6 +44,8 @@ class CrewManager:
     def process_task(self, task_id: str, task_description: str):
         """Process a task using CrewAI"""
         try:
+            logger.info(f"Starting to process task {task_id}")
+
             # Create agents
             researcher, writer = self.create_agents()
 
@@ -68,6 +70,7 @@ class CrewManager:
 
             # Execute the tasks
             result = crew.kickoff()
+            logger.info(f"Task {task_id} completed successfully")
 
             # Update task status
             self.task_queue.update_task(
@@ -77,7 +80,7 @@ class CrewManager:
             )
 
         except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}")
+            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
             self.task_queue.update_task(
                 task_id=task_id,
                 status='failed',

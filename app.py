@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from flask_swagger_ui import get_swaggerui_blueprint
 from database import db
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -52,6 +53,15 @@ def generate_task_token(task_id):
     }
     return jwt.encode(payload, app.secret_key, algorithm='HS256')
 
+def process_task_async(task_id, task_description):
+    """Process task asynchronously"""
+    with app.app_context():
+        try:
+            crew_manager.process_task(task_id, task_description)
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {str(e)}")
+            task_queue.update_task(task_id, 'failed', str(e))
+
 @app.route('/')
 def home():
     """Redirect root to Swagger UI"""
@@ -68,8 +78,13 @@ def create_task():
         task_id = task_queue.add_task(data['task'])
         token = generate_task_token(task_id)
 
-        # Start task processing asynchronously
-        crew_manager.process_task(task_id, data['task'])
+        # Start task processing in a background thread
+        thread = threading.Thread(
+            target=process_task_async,
+            args=(task_id, data['task'])
+        )
+        thread.daemon = True
+        thread.start()
 
         return jsonify({
             'task_id': task_id,
