@@ -91,7 +91,7 @@ class CrewManager:
             crew = Crew(
                 agents=list(agents.values()),
                 tasks=tasks,
-                verbose=2  # Enable verbose output for more detailed logs
+                verbose=True  # Enable verbose output for detailed logs
             )
 
             # Execute the tasks
