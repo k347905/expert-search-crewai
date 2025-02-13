@@ -1,4 +1,4 @@
-from app import db
+from database import db
 from datetime import datetime
 
 class Task(db.Model):
@@ -39,4 +39,3 @@ class Task(db.Model):
 
     def __repr__(self):
         return f'<Task {self.id}: {self.status}>'
-

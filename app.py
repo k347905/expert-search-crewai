@@ -3,15 +3,28 @@ import logging
 import jwt
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
-from tasks import TaskQueue
-from crew_manager import CrewManager
+from database import db
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Initialize Flask app
 app = Flask(__name__)
+
+# Configure Flask app
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key-here")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+
+# Initialize extensions
+db.init_app(app)
+
+from tasks import TaskQueue
+from crew_manager import CrewManager
 
 # Initialize task queue and crew manager
 task_queue = TaskQueue()
@@ -88,3 +101,7 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
+
+# Create database tables
+with app.app_context():
+    db.create_all()

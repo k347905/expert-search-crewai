@@ -1,6 +1,7 @@
 import logging
-from crewai import Task, Agent, Crew
+from crewai import Task as CrewTask, Agent, Crew
 from tasks import TaskQueue
+from database import db
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,12 @@ class CrewManager:
             researcher, writer = self.create_agents()
 
             # Create tasks
-            research_task = Task(
+            research_task = CrewTask(
                 description=f"Research the following topic: {task_description}",
                 agent=researcher
             )
 
-            write_task = Task(
+            write_task = CrewTask(
                 description="Create a comprehensive response based on the research",
                 agent=writer
             )
