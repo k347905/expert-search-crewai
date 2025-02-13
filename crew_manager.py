@@ -72,11 +72,14 @@ class CrewManager:
             result = crew.kickoff()
             logger.info(f"Task {task_id} completed successfully")
 
+            # Convert CrewOutput to string before storing
+            result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
+
             # Update task status
             self.task_queue.update_task(
                 task_id=task_id,
                 status='completed',
-                result=result
+                result=result_str
             )
 
         except Exception as e:
