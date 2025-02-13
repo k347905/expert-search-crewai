@@ -69,23 +69,24 @@ class CrewManager:
         )
 
     def format_result(self, result):
-        """Format the result into a structured JSON object"""
+        """Format the result into a standardized JSON structure"""
         try:
-            # If result is already JSON-formatted string, parse it
-            if isinstance(result, str):
-                try:
-                    return json.loads(result)
-                except json.JSONDecodeError:
-                    # If not JSON, structure it as a text result
-                    return {"text": result}
-            # If result has raw attribute, try to parse it
-            elif hasattr(result, 'raw'):
-                try:
-                    return json.loads(str(result.raw))
-                except json.JSONDecodeError:
-                    return {"text": str(result.raw)}
-            # Fallback for other types
-            return {"text": str(result)}
+            # If result has raw attribute, use it
+            result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
+
+            try:
+                # Try to parse the result as JSON first
+                parsed_result = json.loads(result_str)
+                # If it's already in our expected format, return it
+                if isinstance(parsed_result, list) or "error" in parsed_result:
+                    return parsed_result
+                # Otherwise, wrap it in our standard format
+                return {"items": [parsed_result] if not isinstance(parsed_result, list) else parsed_result}
+            except json.JSONDecodeError:
+                # If it's not JSON, wrap the text in our standard format
+                if "error" in result_str.lower():
+                    return {"error": result_str}
+                return {"items": [{"text": result_str}]}
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
             return {"error": str(e)}
@@ -156,7 +157,7 @@ class CrewManager:
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
             error_output = {
-                "error": str(e),
+                "result": {"error": str(e)},
                 "metadata": {
                     "task_id": task_id,
                     "query": query,
