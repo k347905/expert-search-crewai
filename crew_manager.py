@@ -7,6 +7,7 @@ from tasks import TaskQueue
 from database import db
 from tools.search_1688 import search1688, item_detail
 from datetime import datetime
+import uuid
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -208,5 +209,70 @@ Set this as the output_json property of your response.
             )
 
     def format_result(self, result):
-        #This function is not defined in original code,  but needed for completeness.  A simple placeholder.
-        return result
+        """Format the CrewAI output into our expected JSON structure"""
+        try:
+            # Extract result from CrewOutput object
+            if hasattr(result, 'raw'):
+                result_str = str(result.raw)
+            else:
+                result_str = str(result)
+
+            logger.debug(f"Raw result string: {result_str}")
+
+            try:
+                # Try to parse any JSON string in the result
+                if isinstance(result_str, str):
+                    # Look for JSON-like structure in the string
+                    start_idx = result_str.find('{')
+                    end_idx = result_str.rfind('}')
+                    if start_idx >= 0 and end_idx > start_idx:
+                        json_str = result_str[start_idx:end_idx + 1]
+                        parsed_result = json.loads(json_str)
+                    else:
+                        raise json.JSONDecodeError("No JSON structure found", result_str, 0)
+                else:
+                    parsed_result = json.loads(result_str)
+
+                # If output_json is already present, return it directly
+                if isinstance(parsed_result, dict) and 'output_json' in parsed_result:
+                    return parsed_result['output_json']
+
+                # If we have items, wrap them in our structure
+                if isinstance(parsed_result, dict) and 'items' in parsed_result:
+                    return {
+                        'items': parsed_result['items'],
+                        'metadata': {
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                    }
+
+                # If it's any other structure, wrap it
+                return {
+                    'items': [parsed_result] if not isinstance(parsed_result, list) else parsed_result,
+                    'metadata': {
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
+                }
+
+            except json.JSONDecodeError as je:
+                logger.warning(f"JSON parsing failed: {str(je)}")
+                # If it's not JSON, create a basic structure with the raw text
+                return {
+                    'items': [{
+                        'id': str(uuid.uuid4()),
+                        'raw_output': result_str,
+                        'timestamp': datetime.utcnow().isoformat()
+                    }],
+                    'metadata': {
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
+                }
+
+        except Exception as e:
+            logger.error(f"Error formatting result: {str(e)}", exc_info=True)
+            return {
+                'error': str(e),
+                'metadata': {
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            }
