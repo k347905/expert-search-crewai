@@ -53,8 +53,8 @@ def generate_task_token(task_id):
     return jwt.encode(payload, app.secret_key, algorithm='HS256')
 
 @app.route('/')
-def docs():
-    """Render API documentation page"""
+def home():
+    """Redirect root to Swagger UI"""
     return render_template('docs.html')
 
 @app.route('/api/tasks', methods=['POST'])
