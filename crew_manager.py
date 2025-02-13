@@ -1,10 +1,12 @@
 import logging
 import os
 import yaml
+import json
 from crewai import Task as CrewTask, Agent, Crew
 from tasks import TaskQueue
 from database import db
 from tools.search_1688 import search1688, item_detail
+from datetime import datetime
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -66,6 +68,28 @@ class CrewManager:
             expected_output=config['expected_output']
         )
 
+    def format_result(self, result):
+        """Format the result into a structured JSON object"""
+        try:
+            # If result is already JSON-formatted string, parse it
+            if isinstance(result, str):
+                try:
+                    return json.loads(result)
+                except json.JSONDecodeError:
+                    # If not JSON, structure it as a text result
+                    return {"text": result}
+            # If result has raw attribute, try to parse it
+            elif hasattr(result, 'raw'):
+                try:
+                    return json.loads(str(result.raw))
+                except json.JSONDecodeError:
+                    return {"text": str(result.raw)}
+            # Fallback for other types
+            return {"text": str(result)}
+        except Exception as e:
+            logger.error(f"Error formatting result: {str(e)}")
+            return {"error": str(e)}
+
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
         try:
@@ -100,28 +124,47 @@ class CrewManager:
             logger.info(f"Task {task_id} completed successfully")
             logger.debug(f"Task result: {result}")
 
-            # Convert CrewOutput to string and store result
-            result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
+            # Format the result as JSON
+            formatted_result = self.format_result(result)
 
             # Read the crew logs
             try:
                 with open('logs/crew.log', 'r') as f:
                     crew_logs = f.read()
-                # Append crew logs to the result
-                result_str = f"Result:\n{result_str}\n\nExecution Logs:\n{crew_logs}"
             except Exception as e:
                 logger.error(f"Error reading crew logs: {str(e)}")
+                crew_logs = str(e)
 
+            # Create final JSON output
+            output = {
+                "result": formatted_result,
+                "logs": crew_logs,
+                "metadata": {
+                    "task_id": task_id,
+                    "query": query,
+                    "timestamp": str(datetime.utcnow())
+                }
+            }
+
+            # Store result
             self.task_queue.update_task(
                 task_id=task_id,
                 status='completed',
-                result=result_str
+                result=json.dumps(output, ensure_ascii=False)
             )
 
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
+            error_output = {
+                "error": str(e),
+                "metadata": {
+                    "task_id": task_id,
+                    "query": query,
+                    "timestamp": str(datetime.utcnow())
+                }
+            }
             self.task_queue.update_task(
                 task_id=task_id,
                 status='failed',
-                result=str(e)
+                result=json.dumps(error_output, ensure_ascii=False)
             )

@@ -40,11 +40,14 @@ async function viewTaskDetails(taskId, token) {
         const logsPre = document.getElementById('modalTaskLogs');
 
         if (task.result) {
-            const parts = task.result.split('\nExecution Logs:\n');
-            if (parts.length > 1) {
-                resultPre.textContent = parts[0].replace('Result:\n', '');
-                logsPre.textContent = parts[1];
-            } else {
+            try {
+                const resultData = JSON.parse(task.result);
+                // Pretty print the result section
+                resultPre.textContent = JSON.stringify(resultData.result, null, 2);
+                // Display logs if available
+                logsPre.textContent = resultData.logs || 'No logs available';
+            } catch (e) {
+                // Fallback for non-JSON results
                 resultPre.textContent = task.result;
                 logsPre.textContent = 'No logs available';
             }
