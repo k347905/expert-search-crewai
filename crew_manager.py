@@ -4,6 +4,7 @@ import yaml
 from crewai import Task as CrewTask, Agent, Crew
 from tasks import TaskQueue
 from database import db
+from tools.search_1688 import search1688, item_detail
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +21,20 @@ class CrewManager:
 
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
+        # Assign tools based on agent role
+        tools = []
+        if agent_name == "search_expert":
+            tools = [search1688]
+        elif agent_name == "detail_extraction_agent":
+            tools = [item_detail]
+
         return Agent(
             role=config['role'],
             goal=config['goal'].format(query="{query}"),  # Allow for query formatting
             backstory=config['backstory'],
             verbose=True,
             allow_delegation=False,
+            tools=tools,
             llm_config={
                 "model": "gpt-4",
                 "api_key": self.api_key
@@ -51,7 +60,7 @@ class CrewManager:
                 for name, config in self.agent_configs.items()
             }
 
-            # Create tasks
+            # Create tasks in the correct order based on dependencies
             tasks = []
             for task_name, config in self.task_configs.items():
                 agent = agents[config['agent']]
