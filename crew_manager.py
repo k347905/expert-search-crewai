@@ -3,14 +3,13 @@ import os
 from crewai import Task as CrewTask, Agent, Crew
 from tasks import TaskQueue
 from database import db
-from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 class CrewManager:
     def __init__(self):
         self.task_queue = TaskQueue()
-        self.openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.api_key = os.environ.get("OPENAI_API_KEY")
 
     def create_agents(self):
         """Create CrewAI agents"""
@@ -19,7 +18,12 @@ class CrewManager:
             goal='Research and analyze the given task thoroughly',
             backstory='Expert at gathering and analyzing information',
             verbose=True,
-            llm=self.openai_client
+            allow_delegation=False,
+            tools=[],
+            llm_config={
+                "model": "gpt-4",
+                "api_key": self.api_key
+            }
         )
 
         writer = Agent(
@@ -27,7 +31,12 @@ class CrewManager:
             goal='Create well-written responses based on research',
             backstory='Expert at creating clear and concise content',
             verbose=True,
-            llm=self.openai_client
+            allow_delegation=False,
+            tools=[],
+            llm_config={
+                "model": "gpt-4",
+                "api_key": self.api_key
+            }
         )
 
         return researcher, writer
