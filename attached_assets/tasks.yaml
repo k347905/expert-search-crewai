@@ -102,7 +102,7 @@ json_conversion_task:
     The output must be valid JSON that can be parsed by JSON.parse().
   agent: json_conversion_agent
   output_format:
-    type: dict
+    type: json
     description: Clean JSON output
     fields:
       items:
