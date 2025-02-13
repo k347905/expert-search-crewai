@@ -71,27 +71,49 @@ class CrewManager:
     def format_result(self, result):
         """Format the result into a clean JSON array of items"""
         try:
-            # Get result string
-            result_str = str(result.raw) if hasattr(result, 'raw') else str(result)
+            # Get result string, handle different result types
+            if hasattr(result, 'raw'):
+                result_str = str(result.raw)
+            elif isinstance(result, (dict, list)):
+                result_str = json.dumps(result)
+            else:
+                result_str = str(result)
 
             try:
-                # Try to parse the result as JSON first
+                # Try to parse the result as JSON
                 parsed_result = json.loads(result_str)
+
                 # If it's already in our expected format, return it
-                if isinstance(parsed_result, dict) and ("items" in parsed_result or "error" in parsed_result):
-                    return parsed_result
+                if isinstance(parsed_result, dict):
+                    if "items" in parsed_result:
+                        return parsed_result
+                    elif "error" in parsed_result:
+                        return parsed_result
+                    else:
+                        # Wrap single object in standard format
+                        return {"items": [parsed_result]}
+
                 # If it's a list, wrap it in our standard format
-                if isinstance(parsed_result, list):
+                elif isinstance(parsed_result, list):
                     return {"items": parsed_result}
-                # Otherwise wrap the object in our standard format
+
+                # For any other JSON type, wrap it in our standard format
                 return {"items": [parsed_result]}
+
             except json.JSONDecodeError:
-                # Since we now have a dedicated JSON conversion task, this should rarely happen
-                return {"error": "Invalid JSON format in result"}
+                # If the string is empty or whitespace only
+                if not result_str.strip():
+                    return {"items": []}
+
+                # For non-JSON strings, wrap in standard format
+                return {"items": [{"text": result_str}]}
 
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
-            return {"error": str(e)}
+            return {
+                "error": str(e),
+                "raw_result": str(result) if result is not None else "No result"
+            }
 
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
