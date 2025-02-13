@@ -10,8 +10,9 @@ class Task(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     task_metadata = db.Column(db.JSON)  # Renamed from metadata to task_metadata
+    webhook_url = db.Column(db.String(500))  # New field for webhook URL
 
-    def __init__(self, id, description):
+    def __init__(self, id, description, webhook_url=None):
         self.id = id
         self.description = description
         self.status = 'pending'
@@ -19,6 +20,7 @@ class Task(db.Model):
         self.created_at = datetime.utcnow()
         self.completed_at = None
         self.task_metadata = {}
+        self.webhook_url = webhook_url
 
     def to_dict(self):
         """Convert task to dictionary representation"""
@@ -29,7 +31,8 @@ class Task(db.Model):
             'result': self.result,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'metadata': self.task_metadata  # Keep the API response consistent
+            'metadata': self.task_metadata,  # Keep the API response consistent
+            'webhook_url': self.webhook_url
         }
 
     def update_status(self, status, result=None):

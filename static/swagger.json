@@ -34,6 +34,11 @@
                   "task": {
                     "type": "string",
                     "description": "Task description"
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "description": "Optional webhook URL for task status notifications",
+                    "format": "uri"
                   }
                 },
                 "required": ["task"]
@@ -114,6 +119,11 @@
                     },
                     "result": {
                       "type": "string",
+                      "nullable": true
+                    },
+                    "webhook_url": {
+                      "type": "string",
+                      "format": "uri",
                       "nullable": true
                     },
                     "created_at": {

@@ -1,13 +1,17 @@
 from typing import Dict, Optional, List
+import requests
+import logging
 from database import db
 from models import Task
 import uuid
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 class TaskQueue:
-    def add_task(self, description: str) -> str:
+    def add_task(self, description: str, webhook_url: Optional[str] = None) -> str:
         """Add a new task to the queue"""
-        task = Task(id=str(uuid.uuid4()), description=description)
+        task = Task(id=str(uuid.uuid4()), description=description, webhook_url=webhook_url)
         db.session.add(task)
         db.session.commit()
         return task.id
@@ -33,6 +37,9 @@ class TaskQueue:
                 task.result = result
             db.session.commit()
 
+            # Send webhook notification if URL is configured
+            self._send_webhook_notification(task)
+
     def update_task_metadata(self, task_id: str, metadata: Dict):
         """Update task metadata"""
         task = Task.query.get(task_id)
@@ -41,3 +48,33 @@ class TaskQueue:
             current_metadata.update(metadata)
             task.task_metadata = current_metadata
             db.session.commit()
+
+    def _send_webhook_notification(self, task: Task):
+        """Send webhook notification for task updates"""
+        if not task.webhook_url:
+            return
+
+        try:
+            payload = {
+                'task_id': task.id,
+                'status': task.status,
+                'result': task.result,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None
+            }
+
+            response = requests.post(
+                task.webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+
+            logger.info(f"Webhook notification sent for task {task.id} to {task.webhook_url}. "
+                       f"Status code: {response.status_code}")
+
+            if response.status_code not in (200, 201, 202):
+                logger.warning(f"Webhook notification failed for task {task.id}. "
+                             f"Status code: {response.status_code}")
+
+        except Exception as e:
+            logger.error(f"Error sending webhook notification for task {task.id}: {str(e)}")
