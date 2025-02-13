@@ -9,11 +9,18 @@
 </head>
 <body>
     <div class="container py-4">
-        <h1 class="mb-4">Task Monitoring Dashboard</h1>
-        
-        <div class="card mb-4">
-            <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Task Monitoring Dashboard</h1>
+            <a href="/docs" class="btn btn-outline-info">API Documentation</a>
+        </div>
+
+        <div class="card">
+            <div class="card-body position-relative">
                 <h2 class="card-title mb-4">Active Tasks</h2>
+                <button class="btn btn-outline-secondary btn-refresh" onclick="refreshDashboard()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+
                 <div class="table-responsive">
                     <table class="table">
                         <thead>
@@ -22,22 +29,26 @@
                                 <th>Description</th>
                                 <th>Status</th>
                                 <th>Created At</th>
+                                <th>Completed At</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="taskTableBody">
                             {% for task in tasks %}
                             <tr>
-                                <td>{{ task.id }}</td>
+                                <td><code>{{ task.id }}</code></td>
                                 <td>{{ task.description }}</td>
                                 <td>
-                                    <span class="badge {% if task.status == 'completed' %}bg-success{% elif task.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                                    <span class="badge status-badge {% if task.status == 'completed' %}bg-success{% elif task.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
                                         {{ task.status }}
                                     </span>
                                 </td>
                                 <td>{{ task.created_at }}</td>
+                                <td>{{ task.completed_at or 'N/A' }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-info" onclick="viewTaskDetails('{{ task.id }}')">View Details</button>
+                                    <button class="btn btn-sm btn-info" onclick="viewTaskDetails('{{ task.id }}')">
+                                        View Details
+                                    </button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -56,13 +67,15 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3">
+                        <div class="mb-4">
                             <h6>Task Information</h6>
                             <dl class="row">
                                 <dt class="col-sm-3">Task ID:</dt>
-                                <dd class="col-sm-9" id="modalTaskId"></dd>
+                                <dd class="col-sm-9"><code id="modalTaskId"></code></dd>
                                 <dt class="col-sm-3">Status:</dt>
-                                <dd class="col-sm-9" id="modalTaskStatus"></dd>
+                                <dd class="col-sm-9">
+                                    <span id="modalTaskStatus" class="badge"></span>
+                                </dd>
                                 <dt class="col-sm-3">Created:</dt>
                                 <dd class="col-sm-9" id="modalTaskCreated"></dd>
                                 <dt class="col-sm-3">Completed:</dt>
@@ -71,8 +84,11 @@
                         </div>
                         <div>
                             <h6>Task Result</h6>
-                            <pre id="modalTaskResult" class="bg-dark text-light p-3 rounded"></pre>
+                            <pre id="modalTaskResult" class="task-result bg-dark text-light p-3 rounded">No result available</pre>
                         </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>

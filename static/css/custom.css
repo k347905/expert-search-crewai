@@ -8,6 +8,7 @@ pre {
 .card {
     border: 1px solid var(--bs-border-color);
     background-color: var(--bs-dark);
+    margin-bottom: 1.5rem;
 }
 
 .card-title {
@@ -15,15 +16,47 @@ pre {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 1200px;
 }
 
-.btn-secondary {
-    background-color: var(--bs-secondary);
-    border-color: var(--bs-secondary);
+.table {
+    margin-bottom: 0;
 }
 
-.btn-secondary:hover {
-    background-color: var(--bs-secondary-dark);
-    border-color: var(--bs-secondary-dark);
+.table th {
+    border-top: none;
+}
+
+.badge {
+    font-size: 0.875rem;
+    padding: 0.35em 0.65em;
+}
+
+.task-result {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.modal-content {
+    background-color: var(--bs-dark);
+    border: 1px solid var(--bs-border-color);
+}
+
+.modal-header {
+    border-bottom-color: var(--bs-border-color);
+}
+
+.modal-footer {
+    border-top-color: var(--bs-border-color);
+}
+
+.btn-refresh {
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+}
+
+.status-badge {
+    min-width: 90px;
+    text-align: center;
 }

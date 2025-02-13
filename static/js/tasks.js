@@ -11,21 +11,27 @@ async function viewTaskDetails(taskId) {
                 'Authorization': localStorage.getItem(`task_token_${taskId}`)
             }
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to fetch task details');
         }
 
         const task = await response.json();
-        
+
         // Update modal content
         document.getElementById('modalTaskId').textContent = task.id;
-        document.getElementById('modalTaskStatus').textContent = task.status;
-        document.getElementById('modalTaskCreated').textContent = new Date(task.created_at).toLocaleString();
+
+        const statusBadge = document.getElementById('modalTaskStatus');
+        statusBadge.textContent = task.status;
+        statusBadge.className = `badge status-badge ${getStatusClass(task.status)}`;
+
+        document.getElementById('modalTaskCreated').textContent = formatDate(task.created_at);
         document.getElementById('modalTaskCompleted').textContent = task.completed_at ? 
-            new Date(task.completed_at).toLocaleString() : 'Not completed';
-        document.getElementById('modalTaskResult').textContent = task.result || 'No result available';
-        
+            formatDate(task.completed_at) : 'Not completed';
+
+        const resultPre = document.getElementById('modalTaskResult');
+        resultPre.textContent = task.result || 'No result available';
+
         taskDetailsModal.show();
     } catch (error) {
         console.error('Error fetching task details:', error);
@@ -33,7 +39,24 @@ async function viewTaskDetails(taskId) {
     }
 }
 
-// Auto-refresh task list every 30 seconds
-setInterval(() => {
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed':
+            return 'bg-success';
+        case 'failed':
+            return 'bg-danger';
+        default:
+            return 'bg-warning';
+    }
+}
+
+function formatDate(dateString) {
+    return new Date(dateString).toLocaleString();
+}
+
+function refreshDashboard() {
     window.location.reload();
-}, 30000);
+}
+
+// Auto-refresh task list every 30 seconds
+setInterval(refreshDashboard, 30000);
