@@ -1,7 +1,7 @@
 from typing import Dict, Optional, List
 import requests
 import logging
-import json # Added import for json handling
+import json
 from database import db
 from models import Task
 import uuid
@@ -10,9 +10,9 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class TaskQueue:
-    def add_task(self, description: str, webhook_url: Optional[str] = None) -> str:
+    def add_task(self, description: str, user_id: str, webhook_url: Optional[str] = None) -> str:
         """Add a new task to the queue"""
-        task = Task(id=str(uuid.uuid4()), description=description, webhook_url=webhook_url)
+        task = Task(id=str(uuid.uuid4()), description=description, user_id=user_id, webhook_url=webhook_url)
         db.session.add(task)
         db.session.commit()
         return task.id
@@ -67,9 +67,10 @@ class TaskQueue:
                     logger.warning(f"Could not parse task result as JSON for task {task.id}")
                     items = []
 
-            # Simplified payload with only items and task_id
+            # Simplified payload with only items, task_id and user_id
             payload = {
                 'task_id': task.id,
+                'user_id': task.user_id,
                 'items': items
             }
 

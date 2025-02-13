@@ -80,8 +80,8 @@ def create_task():
     """Create a new task"""
     try:
         data = request.get_json()
-        if not data or 'task' not in data:
-            return jsonify({'error': 'Missing task description'}), 400
+        if not data or 'task' not in data or 'user_id' not in data:
+            return jsonify({'error': 'Missing task description or user_id'}), 400
 
         # Get optional webhook URL
         webhook_url = data.get('webhook_url')
@@ -96,7 +96,7 @@ def create_task():
             except Exception:
                 return jsonify({'error': 'Invalid webhook URL'}), 400
 
-        task_id = task_queue.add_task(data['task'], webhook_url)
+        task_id = task_queue.add_task(data['task'], data['user_id'], webhook_url)
         token = generate_task_token(task_id)
 
         # Store token in task metadata for dashboard access

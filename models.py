@@ -4,6 +4,7 @@ from datetime import datetime
 class Task(db.Model):
     """Task model for storing task information"""
     id = db.Column(db.String(36), primary_key=True)  # UUID string
+    user_id = db.Column(db.String(36), nullable=False)  # Added user_id field
     description = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(20), nullable=False, default='pending')  # pending, completed, failed
     result = db.Column(db.Text)
@@ -12,9 +13,10 @@ class Task(db.Model):
     task_metadata = db.Column(db.JSON)  # Renamed from metadata to task_metadata
     webhook_url = db.Column(db.String(500))  # New field for webhook URL
 
-    def __init__(self, id, description, webhook_url=None):
+    def __init__(self, id, description, user_id, webhook_url=None):
         self.id = id
         self.description = description
+        self.user_id = user_id
         self.status = 'pending'
         self.result = None
         self.created_at = datetime.utcnow()
@@ -26,6 +28,7 @@ class Task(db.Model):
         """Convert task to dictionary representation"""
         return {
             'id': self.id,
+            'user_id': self.user_id,
             'description': self.description,
             'status': self.status,
             'result': self.result,
