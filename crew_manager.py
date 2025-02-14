@@ -246,7 +246,7 @@ You must provide output in the following JSON format:
             }
         }
 
-        # Enhance task description with output requirements
+        # Enhance task description with output requirements and logging
         enhanced_description = f"""
 {config['description'].format(query=query)}
 
@@ -254,13 +254,68 @@ You MUST format your response as a JSON object with the following structure:
 {json.dumps(output_format, indent=2)}
 
 Set this as the output_json property of your response.
+
+Additionally, you MUST:
+1. Log your thought process
+2. Log any tools you use and their results
+3. Log any intermediate conclusions
+4. Log your final decision and output
 """
 
-        return CrewTask(
+        # Create a task with logging callback
+        task = CrewTask(
             description=enhanced_description,
             agent=agent,
-            expected_output=json.dumps(output_format, indent=2)
+            expected_output=json.dumps(output_format, indent=2),
+            context={
+                "start_time": None,
+                "end_time": None,
+                "task_name": task_name,
+                "steps": []
+            }
         )
+
+        # Add task execution hooks
+        def on_task_start(task):
+            task.context["start_time"] = datetime.utcnow().isoformat()
+            log_entry = {
+                "timestamp": task.context["start_time"],
+                "task_name": task.context["task_name"],
+                "event": "task_started",
+                "agent": agent.role,
+                "description": task.description.split('\n')[0]  # Get first line of description
+            }
+            self.task_logs[task.task_id].append(log_entry)
+
+        def on_task_end(task, output):
+            task.context["end_time"] = datetime.utcnow().isoformat()
+            log_entry = {
+                "timestamp": task.context["end_time"],
+                "task_name": task.context["task_name"],
+                "event": "task_completed",
+                "agent": agent.role,
+                "output": str(output)[:500]  # Truncate long outputs
+            }
+            self.task_logs[task.task_id].append(log_entry)
+
+        def on_tool_use(task, tool_name, tool_input, tool_output):
+            log_entry = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "task_name": task.context["task_name"],
+                "event": "tool_used",
+                "agent": agent.role,
+                "tool": tool_name,
+                "input": str(tool_input),
+                "output": str(tool_output)[:500]  # Truncate long outputs
+            }
+            self.task_logs[task.task_id].append(log_entry)
+
+        # Attach hooks to task
+        task.on_start = on_task_start
+        task.on_end = on_task_end
+        task.on_tool_use = on_tool_use
+
+        return task
 
     def format_result(self, result):
         """Format the CrewAI output into our expected JSON structure"""
@@ -287,22 +342,33 @@ Set this as the output_json property of your response.
                 else:
                     parsed_result = json.loads(result_str)
 
-                # If output_json is already present, return it directly
+                # Get task execution logs
+                task_execution_logs = []
+                for task_id, logs in self.task_logs.items():
+                    task_execution_logs.extend(logs)
+
+                # Sort logs by timestamp
+                task_execution_logs.sort(key=lambda x: x['timestamp'])
+
+                # If output_json is already present, add logs and return
                 if isinstance(parsed_result, dict) and 'output_json' in parsed_result:
+                    parsed_result['output_json']['task_execution_logs'] = task_execution_logs
                     return parsed_result['output_json']
 
-                # If we have items, wrap them in our structure
+                # If we have items, wrap them in our structure with logs
                 if isinstance(parsed_result, dict) and 'items' in parsed_result:
                     return {
                         'items': parsed_result['items'],
+                        'task_execution_logs': task_execution_logs,
                         'metadata': {
                             'timestamp': datetime.utcnow().isoformat()
                         }
                     }
 
-                # If it's any other structure, wrap it
+                # If it's any other structure, wrap it with logs
                 return {
                     'items': [parsed_result] if not isinstance(parsed_result, list) else parsed_result,
+                    'task_execution_logs': task_execution_logs,
                     'metadata': {
                         'timestamp': datetime.utcnow().isoformat()
                     }
@@ -310,13 +376,14 @@ Set this as the output_json property of your response.
 
             except json.JSONDecodeError as je:
                 logger.warning(f"JSON parsing failed: {str(je)}")
-                # If it's not JSON, create a basic structure with the raw text
+                # If it's not JSON, create a basic structure with the raw text and logs
                 return {
                     'items': [{
                         'id': str(uuid.uuid4()),
                         'raw_output': result_str,
                         'timestamp': datetime.utcnow().isoformat()
                     }],
+                    'task_execution_logs': self.task_logs,
                     'metadata': {
                         'timestamp': datetime.utcnow().isoformat()
                     }
@@ -326,6 +393,7 @@ Set this as the output_json property of your response.
             logger.error(f"Error formatting result: {str(e)}", exc_info=True)
             return {
                 'error': str(e),
+                'task_execution_logs': self.task_logs,
                 'metadata': {
                     'timestamp': datetime.utcnow().isoformat()
                 }
