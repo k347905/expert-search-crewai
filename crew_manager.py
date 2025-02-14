@@ -109,6 +109,101 @@ You must provide output in the following JSON format:
         handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         return handler
 
+    def create_task(self, task_name, config, agent, query):
+        """Create a CrewAI task from configuration"""
+        logger.debug(f"Creating task: {task_name} with query: {query}")
+
+        # Define expected output format
+        output_format = {
+            "output_json": {
+                "items": [
+                    {
+                        "id": "string",
+                        "name": "string",
+                        "description": "string",
+                        "price": "number",
+                        "url": "string"
+                    }
+                ],
+                "metadata": {
+                    "query": query,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }
+        }
+
+        # Enhance task description with output requirements and logging
+        enhanced_description = f"""
+{config['description'].format(query=query)}
+
+You MUST format your response as a JSON object with the following structure:
+{json.dumps(output_format, indent=2)}
+
+Additionally, you MUST:
+1. Log your thought process
+2. Log any tools you use and their results
+3. Log any intermediate conclusions
+4. Log your final decision and output
+"""
+
+        task = CrewTask(
+            description=enhanced_description,
+            agent=agent,
+            expected_output=json.dumps(output_format, indent=2)
+        )
+
+        # Store task metadata in our manager
+        task_info = {
+            "name": task_name,
+            "start_time": None,
+            "end_time": None,
+            "agent_role": agent.role,
+            "steps": []
+        }
+        self.task_logs[task.task_id].append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "event": "task_created",
+            "task_info": task_info
+        })
+
+        # Create callback closures that use our task_logs
+        def on_start():
+            task_info["start_time"] = datetime.utcnow().isoformat()
+            self.task_logs[task.task_id].append({
+                "timestamp": task_info["start_time"],
+                "event": "task_started",
+                "task_name": task_name,
+                "agent": agent.role
+            })
+
+        def on_end(output):
+            task_info["end_time"] = datetime.utcnow().isoformat()
+            self.task_logs[task.task_id].append({
+                "timestamp": task_info["end_time"],
+                "event": "task_completed",
+                "task_name": task_name,
+                "agent": agent.role,
+                "output_summary": str(output)[:500]  # Truncate long outputs
+            })
+
+        def on_tool_use(tool_name, tool_input, tool_output):
+            self.task_logs[task.task_id].append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "event": "tool_used",
+                "task_name": task_name,
+                "agent": agent.role,
+                "tool": tool_name,
+                "input": str(tool_input),
+                "output": str(tool_output)[:500]  # Truncate long outputs
+            })
+
+        # Set the callbacks
+        task.on_start = on_start
+        task.on_end = on_end
+        task.on_tool_use = on_tool_use
+
+        return task
+
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
         try:
@@ -222,100 +317,6 @@ You must provide output in the following JSON format:
         except Exception as e:
             logger.error(f"Error reading log file: {str(e)}")
             return str(e)
-
-    def create_task(self, task_name, config, agent, query):
-        """Create a CrewAI task from configuration"""
-        logger.debug(f"Creating task: {task_name} with query: {query}")
-
-        # Define expected output format
-        output_format = {
-            "output_json": {
-                "items": [
-                    {
-                        "id": "string",
-                        "name": "string",
-                        "description": "string",
-                        "price": "number",
-                        "url": "string"
-                    }
-                ],
-                "metadata": {
-                    "query": query,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            }
-        }
-
-        # Enhance task description with output requirements and logging
-        enhanced_description = f"""
-{config['description'].format(query=query)}
-
-You MUST format your response as a JSON object with the following structure:
-{json.dumps(output_format, indent=2)}
-
-Set this as the output_json property of your response.
-
-Additionally, you MUST:
-1. Log your thought process
-2. Log any tools you use and their results
-3. Log any intermediate conclusions
-4. Log your final decision and output
-"""
-
-        # Create a task with logging callback
-        task = CrewTask(
-            description=enhanced_description,
-            agent=agent,
-            expected_output=json.dumps(output_format, indent=2),
-            context={
-                "start_time": None,
-                "end_time": None,
-                "task_name": task_name,
-                "steps": []
-            }
-        )
-
-        # Add task execution hooks
-        def on_task_start(task):
-            task.context["start_time"] = datetime.utcnow().isoformat()
-            log_entry = {
-                "timestamp": task.context["start_time"],
-                "task_name": task.context["task_name"],
-                "event": "task_started",
-                "agent": agent.role,
-                "description": task.description.split('\n')[0]  # Get first line of description
-            }
-            self.task_logs[task.task_id].append(log_entry)
-
-        def on_task_end(task, output):
-            task.context["end_time"] = datetime.utcnow().isoformat()
-            log_entry = {
-                "timestamp": task.context["end_time"],
-                "task_name": task.context["task_name"],
-                "event": "task_completed",
-                "agent": agent.role,
-                "output": str(output)[:500]  # Truncate long outputs
-            }
-            self.task_logs[task.task_id].append(log_entry)
-
-        def on_tool_use(task, tool_name, tool_input, tool_output):
-            log_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "task_name": task.context["task_name"],
-                "event": "tool_used",
-                "agent": agent.role,
-                "tool": tool_name,
-                "input": str(tool_input),
-                "output": str(tool_output)[:500]  # Truncate long outputs
-            }
-            self.task_logs[task.task_id].append(log_entry)
-
-        # Attach hooks to task
-        task.on_start = on_task_start
-        task.on_end = on_task_end
-        task.on_tool_use = on_tool_use
-
-        return task
 
     def format_result(self, result):
         """Format the CrewAI output into our expected JSON structure"""
