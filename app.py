@@ -34,6 +34,9 @@ def save_config(config):
     except Exception as e:
         logger.error(f"Error saving config: {str(e)}")
 
+# Update Configuration and Environment Variable
+os.environ["API_MODE"] = load_config().get('search_mode', 'online')
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -51,7 +54,7 @@ migrate = Migrate(app, db)
 
 from tasks import TaskQueue
 from crew_manager import CrewManager
-import tools # Assuming tools module exists and contains tools.search_1688
+import tools.search_1688 as search_tool
 
 # Initialize task queue and crew manager
 task_queue = TaskQueue()
@@ -59,6 +62,9 @@ crew_manager = CrewManager()
 
 # Load Configuration
 app.config['search_mode'] = load_config().get('search_mode', 'online')
+# Sync API_MODE with app configuration
+os.environ["API_MODE"] = app.config['search_mode']
+logger.debug(f"Initial search mode set to: {app.config['search_mode']}")
 
 
 # Swagger configuration
@@ -178,6 +184,7 @@ def get_task_status(task_id):
         logger.error(f"Error getting task status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+# Add debug logging for search mode changes
 @app.route('/api/config/search_mode', methods=['POST'])
 def update_search_mode():
     """Update search mode configuration"""
@@ -190,16 +197,17 @@ def update_search_mode():
         if mode not in ['online', 'mock']:
             return jsonify({'error': 'Invalid mode value'}), 400
 
-        # Update app configuration
+        # Update app configuration and environment variable
         app.config['search_mode'] = mode
+        os.environ["API_MODE"] = mode
+        logger.debug(f"Search mode updated to: {mode}")
+        logger.debug(f"API_MODE environment variable set to: {os.environ['API_MODE']}")
 
         # Save to persistent storage
         config = load_config()
         config['search_mode'] = mode
         save_config(config)
-
-        # Update crew manager's search mode
-        tools.search_1688.MOCK_MODE = (mode == 'mock')
+        logger.debug("Configuration saved to file")
 
         return jsonify({'mode': mode}), 200
 
