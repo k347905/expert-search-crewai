@@ -1,6 +1,5 @@
 import os
 import logging
-from logging.handlers import RotatingFileHandler
 import jwt
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
@@ -8,26 +7,9 @@ from flask_swagger_ui import get_swaggerui_blueprint
 from database import db
 import threading
 
-# Configure logging - keep existing logging setup
+# Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# Ensure logs directory exists
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-# Add file handler for webhook logs
-webhook_handler = RotatingFileHandler(
-    'logs/webhook.log',
-    maxBytes=10000000,  # 10MB
-    backupCount=5
-)
-webhook_handler.setLevel(logging.DEBUG)
-webhook_formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-webhook_handler.setFormatter(webhook_formatter)
-logger.addHandler(webhook_handler)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -172,17 +154,6 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
-
-@app.route('/logs/webhook')
-def view_webhook_logs():
-    """Display webhook logs"""
-    try:
-        with open('logs/webhook.log', 'r') as f:
-            logs = f.readlines()
-        return render_template('logs.html', logs=logs, title='Webhook Logs')
-    except FileNotFoundError:
-        return "No webhook logs found", 404
-
 
 # Create database tables
 with app.app_context():

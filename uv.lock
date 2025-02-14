@@ -2350,7 +2350,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "sqlalchemy" },
-    { name = "urllib3" },
 ]
 
 [package.metadata]
@@ -2370,7 +2369,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },
-    { name = "urllib3", specifier = ">=2.3.0" },
 ]
 
 [[package]]
