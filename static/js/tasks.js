@@ -36,6 +36,24 @@ async function viewTaskDetails(taskId, token) {
         document.getElementById('modalTaskCompleted').textContent = task.completed_at ? 
             formatDate(task.completed_at) : 'Not completed';
 
+        // Update webhook information
+        document.getElementById('modalWebhookUrl').textContent = task.webhook_url || 'No webhook URL configured';
+
+        const webhookStatus = document.getElementById('modalWebhookStatus');
+        const webhookDelivery = task.metadata?.webhook_delivery;
+        if (webhookDelivery) {
+            webhookStatus.textContent = webhookDelivery.status;
+            webhookStatus.className = `badge ${webhookDelivery.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+        } else {
+            webhookStatus.textContent = 'Not attempted';
+            webhookStatus.className = 'badge bg-secondary';
+        }
+
+        document.getElementById('modalWebhookLastAttempt').textContent = 
+            task.webhook_status?.last_attempt ? formatDate(task.webhook_status.last_attempt) : 'No attempts';
+        document.getElementById('modalWebhookRetries').textContent = 
+            task.webhook_status?.retries || '0';
+
         const resultPre = document.getElementById('modalTaskResult');
         const logsPre = document.getElementById('modalTaskLogs');
 
