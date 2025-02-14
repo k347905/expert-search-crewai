@@ -23,6 +23,7 @@ class CrewManager:
         self.task_queue = TaskQueue()
         self.api_key = os.environ.get("OPENAI_API_KEY")
         self.task_logs = defaultdict(list)  # Store logs for each task
+        self.task_metadata = {}  # Store task metadata
 
         # Load agent and task configurations from root directory
         logger.debug("Loading agent and task configurations")
@@ -113,6 +114,9 @@ You must provide output in the following JSON format:
         """Create a CrewAI task from configuration"""
         logger.debug(f"Creating task: {task_name} with query: {query}")
 
+        # Generate a unique ID for this task
+        task_tracking_id = str(uuid.uuid4())
+
         # Define expected output format
         output_format = {
             "output_json": {
@@ -152,34 +156,36 @@ Additionally, you MUST:
             expected_output=json.dumps(output_format, indent=2)
         )
 
-        # Store task metadata in our manager
-        task_info = {
+        # Store task metadata
+        self.task_metadata[task_tracking_id] = {
             "name": task_name,
             "start_time": None,
             "end_time": None,
             "agent_role": agent.role,
             "steps": []
         }
-        self.task_logs[task.task_id].append({
+
+        # Log task creation
+        self.task_logs[task_tracking_id].append({
             "timestamp": datetime.utcnow().isoformat(),
             "event": "task_created",
-            "task_info": task_info
+            "task_info": self.task_metadata[task_tracking_id]
         })
 
         # Create callback closures that use our task_logs
         def on_start():
-            task_info["start_time"] = datetime.utcnow().isoformat()
-            self.task_logs[task.task_id].append({
-                "timestamp": task_info["start_time"],
+            self.task_metadata[task_tracking_id]["start_time"] = datetime.utcnow().isoformat()
+            self.task_logs[task_tracking_id].append({
+                "timestamp": self.task_metadata[task_tracking_id]["start_time"],
                 "event": "task_started",
                 "task_name": task_name,
                 "agent": agent.role
             })
 
         def on_end(output):
-            task_info["end_time"] = datetime.utcnow().isoformat()
-            self.task_logs[task.task_id].append({
-                "timestamp": task_info["end_time"],
+            self.task_metadata[task_tracking_id]["end_time"] = datetime.utcnow().isoformat()
+            self.task_logs[task_tracking_id].append({
+                "timestamp": self.task_metadata[task_tracking_id]["end_time"],
                 "event": "task_completed",
                 "task_name": task_name,
                 "agent": agent.role,
@@ -187,7 +193,7 @@ Additionally, you MUST:
             })
 
         def on_tool_use(tool_name, tool_input, tool_output):
-            self.task_logs[task.task_id].append({
+            self.task_logs[task_tracking_id].append({
                 "timestamp": datetime.utcnow().isoformat(),
                 "event": "tool_used",
                 "task_name": task_name,
@@ -202,7 +208,7 @@ Additionally, you MUST:
         task.on_end = on_end
         task.on_tool_use = on_tool_use
 
-        return task
+        return task, task_tracking_id
 
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
@@ -233,10 +239,12 @@ Additionally, you MUST:
 
             # Create tasks in the correct order based on dependencies
             tasks = []
+            task_ids = []  # Store corresponding task IDs
             for task_name, config in self.task_configs.items():
                 agent = agents[config['agent']]
-                task = self.create_task(task_name, config, agent, query)
+                task, tracking_id = self.create_task(task_name, config, agent, query)
                 tasks.append(task)
+                task_ids.append(tracking_id)
             logger.debug(f"Created {len(tasks)} tasks")
 
             # Create and run crew
@@ -255,13 +263,18 @@ Additionally, you MUST:
             # Format the result as JSON
             formatted_result = self.format_result(result)
 
-            # Get the task logs from memory
-            task_logs = self.task_logs[task_id]
+            # Collect all task logs
+            all_task_logs = []
+            for tracking_id in task_ids:
+                all_task_logs.extend(self.task_logs[tracking_id])
+
+            # Sort logs by timestamp
+            all_task_logs.sort(key=lambda x: x['timestamp'])
 
             # Create final JSON output
             output = {
                 "result": formatted_result,
-                "task_logs": task_logs,  # Include structured logs
+                "task_logs": all_task_logs,  # Include structured logs from all subtasks
                 "file_logs": self.read_log_file(log_file),  # Include file logs as backup
                 "metadata": {
                     "task_id": task_id,
@@ -343,33 +356,22 @@ Additionally, you MUST:
                 else:
                     parsed_result = json.loads(result_str)
 
-                # Get task execution logs
-                task_execution_logs = []
-                for task_id, logs in self.task_logs.items():
-                    task_execution_logs.extend(logs)
-
-                # Sort logs by timestamp
-                task_execution_logs.sort(key=lambda x: x['timestamp'])
-
-                # If output_json is already present, add logs and return
+                # If output_json is already present, return it directly
                 if isinstance(parsed_result, dict) and 'output_json' in parsed_result:
-                    parsed_result['output_json']['task_execution_logs'] = task_execution_logs
                     return parsed_result['output_json']
 
-                # If we have items, wrap them in our structure with logs
+                # If we have items, wrap them in our structure
                 if isinstance(parsed_result, dict) and 'items' in parsed_result:
                     return {
                         'items': parsed_result['items'],
-                        'task_execution_logs': task_execution_logs,
                         'metadata': {
                             'timestamp': datetime.utcnow().isoformat()
                         }
                     }
 
-                # If it's any other structure, wrap it with logs
+                # If it's any other structure, wrap it
                 return {
                     'items': [parsed_result] if not isinstance(parsed_result, list) else parsed_result,
-                    'task_execution_logs': task_execution_logs,
                     'metadata': {
                         'timestamp': datetime.utcnow().isoformat()
                     }
@@ -377,14 +379,13 @@ Additionally, you MUST:
 
             except json.JSONDecodeError as je:
                 logger.warning(f"JSON parsing failed: {str(je)}")
-                # If it's not JSON, create a basic structure with the raw text and logs
+                # If it's not JSON, create a basic structure with the raw text
                 return {
                     'items': [{
                         'id': str(uuid.uuid4()),
                         'raw_output': result_str,
                         'timestamp': datetime.utcnow().isoformat()
                     }],
-                    'task_execution_logs': self.task_logs,
                     'metadata': {
                         'timestamp': datetime.utcnow().isoformat()
                     }
@@ -394,7 +395,6 @@ Additionally, you MUST:
             logger.error(f"Error formatting result: {str(e)}", exc_info=True)
             return {
                 'error': str(e),
-                'task_execution_logs': self.task_logs,
                 'metadata': {
                     'timestamp': datetime.utcnow().isoformat()
                 }
