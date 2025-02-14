@@ -1,6 +1,38 @@
-let taskDetailsModal;
-
+// Add the toggle switch handler at the beginning of the file
 document.addEventListener('DOMContentLoaded', function() {
+    const searchModeToggle = document.getElementById('searchModeToggle');
+    if (searchModeToggle) {
+        searchModeToggle.addEventListener('change', async function() {
+            try {
+                const response = await fetch('/api/config/search_mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        mode: this.checked ? 'mock' : 'online'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update search mode');
+                }
+
+                const data = await response.json();
+                // Update the label text
+                const label = document.querySelector('label[for="searchModeToggle"]');
+                if (label) {
+                    label.textContent = `Mock Mode (${data.mode === 'mock' ? 'ON' : 'OFF'})`;
+                }
+
+            } catch (error) {
+                console.error('Error updating search mode:', error);
+                alert('Failed to update search mode. Please try again.');
+                // Revert the toggle if the update failed
+                this.checked = !this.checked;
+            }
+        });
+    }
     taskDetailsModal = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
 });
 
@@ -33,7 +65,7 @@ async function viewTaskDetails(taskId, token) {
         statusBadge.className = `badge status-badge ${getStatusClass(task.status)}`;
 
         document.getElementById('modalTaskCreated').textContent = formatDate(task.created_at);
-        document.getElementById('modalTaskCompleted').textContent = task.completed_at ? 
+        document.getElementById('modalTaskCompleted').textContent = task.completed_at ?
             formatDate(task.completed_at) : 'Not completed';
 
         // Update webhook information
@@ -71,9 +103,9 @@ async function viewTaskDetails(taskId, token) {
             document.getElementById('modalWebhookResponse').textContent = 'No response available';
         }
 
-        document.getElementById('modalWebhookLastAttempt').textContent = 
+        document.getElementById('modalWebhookLastAttempt').textContent =
             task.webhook_status?.last_attempt ? formatDate(task.webhook_status.last_attempt) : 'No attempts';
-        document.getElementById('modalWebhookRetries').textContent = 
+        document.getElementById('modalWebhookRetries').textContent =
             task.webhook_status?.retries || '0';
 
         const resultPre = document.getElementById('modalTaskResult');

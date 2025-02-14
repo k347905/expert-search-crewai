@@ -7,7 +7,7 @@ import json
 import hashlib
 
 # Set API_MODE to either "online" or "mocked_data" (default: online)
-API_MODE = os.getenv("API_MODE", "mocked_data").lower()
+API_MODE = os.getenv("API_MODE", "onlnie").lower()
 CACHE_DIR = "api_cache"
 
 if not os.path.exists(CACHE_DIR):

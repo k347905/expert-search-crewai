@@ -7,10 +7,32 @@ from flask_swagger_ui import get_swaggerui_blueprint
 from flask_migrate import Migrate
 from database import db
 import threading
+import json
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+CONFIG_FILE = 'config.json'
+
+def load_config():
+    """Load configuration from JSON file"""
+    try:
+        if Path(CONFIG_FILE).exists():
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading config: {str(e)}")
+    return {'search_mode': 'online'}  # Default configuration
+
+def save_config(config):
+    """Save configuration to JSON file"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f)
+    except Exception as e:
+        logger.error(f"Error saving config: {str(e)}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -29,10 +51,15 @@ migrate = Migrate(app, db)
 
 from tasks import TaskQueue
 from crew_manager import CrewManager
+import tools # Assuming tools module exists and contains tools.search_1688
 
 # Initialize task queue and crew manager
 task_queue = TaskQueue()
 crew_manager = CrewManager()
+
+# Load Configuration
+app.config['search_mode'] = load_config().get('search_mode', 'online')
+
 
 # Swagger configuration
 SWAGGER_URL = '/swagger'
@@ -75,7 +102,9 @@ def home():
 def task_dashboard():
     """Display task monitoring dashboard"""
     tasks = task_queue.get_all_tasks()
-    return render_template('tasks.html', tasks=tasks)
+    return render_template('tasks.html', 
+                         tasks=tasks, 
+                         search_mode=app.config['search_mode'])
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
@@ -148,6 +177,36 @@ def get_task_status(task_id):
     except Exception as e:
         logger.error(f"Error getting task status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/config/search_mode', methods=['POST'])
+def update_search_mode():
+    """Update search mode configuration"""
+    try:
+        data = request.get_json()
+        if not data or 'mode' not in data:
+            return jsonify({'error': 'Missing mode parameter'}), 400
+
+        mode = data['mode']
+        if mode not in ['online', 'mock']:
+            return jsonify({'error': 'Invalid mode value'}), 400
+
+        # Update app configuration
+        app.config['search_mode'] = mode
+
+        # Save to persistent storage
+        config = load_config()
+        config['search_mode'] = mode
+        save_config(config)
+
+        # Update crew manager's search mode
+        tools.search_1688.MOCK_MODE = (mode == 'mock')
+
+        return jsonify({'mode': mode}), 200
+
+    except Exception as e:
+        logger.error(f"Error updating search mode: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 
 @app.errorhandler(404)
 def not_found(error):
