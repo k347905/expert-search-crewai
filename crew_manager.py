@@ -136,30 +136,10 @@ You must provide output in the following JSON format:
             }
         }
 
-        # Enhance task description with output requirements and logging
-        enhanced_description = f"""
-{config['description'].format(query=query)}
-
-You MUST format your response as a JSON object with the following structure:
-{json.dumps(output_format, indent=2)}
-
-Additionally, you MUST:
-1. Log your thought process
-2. Log any tools you use and their results
-3. Log any intermediate conclusions
-4. Log your final decision and output
-"""
-
-        task = CrewTask(
-            description=enhanced_description,
-            agent=agent,
-            expected_output=json.dumps(output_format, indent=2)
-        )
-
-        # Store task metadata
+        # Store metadata first
         self.task_metadata[task_tracking_id] = {
             "name": task_name,
-            "start_time": None,
+            "start_time": datetime.utcnow().isoformat(),
             "end_time": None,
             "agent_role": agent.role,
             "steps": []
@@ -172,41 +152,36 @@ Additionally, you MUST:
             "task_info": self.task_metadata[task_tracking_id]
         })
 
-        # Create callback closures that use our task_logs
-        def on_start():
-            self.task_metadata[task_tracking_id]["start_time"] = datetime.utcnow().isoformat()
-            self.task_logs[task_tracking_id].append({
-                "timestamp": self.task_metadata[task_tracking_id]["start_time"],
-                "event": "task_started",
-                "task_name": task_name,
-                "agent": agent.role
-            })
+        # Enhance task description with output requirements and logging instructions
+        enhanced_description = f"""
+{config['description'].format(query=query)}
 
-        def on_end(output):
-            self.task_metadata[task_tracking_id]["end_time"] = datetime.utcnow().isoformat()
-            self.task_logs[task_tracking_id].append({
-                "timestamp": self.task_metadata[task_tracking_id]["end_time"],
-                "event": "task_completed",
-                "task_name": task_name,
-                "agent": agent.role,
-                "output_summary": str(output)[:500]  # Truncate long outputs
-            })
+You MUST format your response as a JSON object with the following structure:
+{json.dumps(output_format, indent=2)}
 
-        def on_tool_use(tool_name, tool_input, tool_output):
-            self.task_logs[task_tracking_id].append({
-                "timestamp": datetime.utcnow().isoformat(),
-                "event": "tool_used",
-                "task_name": task_name,
-                "agent": agent.role,
-                "tool": tool_name,
-                "input": str(tool_input),
-                "output": str(tool_output)[:500]  # Truncate long outputs
-            })
+Your response should include detailed logs about:
+1. Your thought process
+2. Tools used and their results
+3. Intermediate conclusions
+4. Final decision and output
 
-        # Set the callbacks
-        task.on_start = on_start
-        task.on_end = on_end
-        task.on_tool_use = on_tool_use
+Track your progress using this task ID: {task_tracking_id}
+"""
+
+        # Create the task without callbacks
+        task = CrewTask(
+            description=enhanced_description,
+            agent=agent,
+            expected_output=json.dumps(output_format, indent=2)
+        )
+
+        # Store task and tracking ID mapping
+        self.task_logs[task_tracking_id].append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "event": "task_started",
+            "task_name": task_name,
+            "agent": agent.role
+        })
 
         return task, task_tracking_id
 
@@ -259,6 +234,16 @@ Additionally, you MUST:
             result = crew.kickoff()
             logger.info(f"Task {task_id} completed successfully")
             logger.debug(f"Task result: {result}")
+
+            # Update completion status for all tasks
+            for tracking_id in task_ids:
+                self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
+                self.task_logs[tracking_id].append({
+                    "timestamp": self.task_metadata[tracking_id]["end_time"],
+                    "event": "task_completed",
+                    "task_name": self.task_metadata[tracking_id]["name"],
+                    "agent": self.task_metadata[tracking_id]["agent_role"]
+                })
 
             # Format the result as JSON
             formatted_result = self.format_result(result)
