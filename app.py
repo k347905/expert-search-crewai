@@ -4,6 +4,7 @@ import jwt
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from flask_swagger_ui import get_swaggerui_blueprint
+from flask_migrate import Migrate
 from database import db
 import threading
 
@@ -24,6 +25,7 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 
 # Initialize extensions
 db.init_app(app)
+migrate = Migrate(app, db)
 
 from tasks import TaskQueue
 from crew_manager import CrewManager
