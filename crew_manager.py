@@ -205,75 +205,108 @@ Track your progress using this task ID: {task_tracking_id}
             logger.info(f"Starting task {task_id}")
             logger.debug(f"Processing query: {query}")
 
-            # Create agents
-            agents = {
-                name: self.create_agent(name, config)
-                for name, config in self.agent_configs.items()
-            }
-            logger.debug(f"Created {len(agents)} agents")
-
-            # Create tasks in the correct order based on dependencies
-            tasks = []
-            task_ids = []  # Store corresponding task IDs
-            for task_name, config in self.task_configs.items():
-                agent = agents[config['agent']]
-                task, tracking_id = self.create_task(task_name, config, agent, query)
-                tasks.append(task)
-                task_ids.append(tracking_id)
-            logger.debug(f"Created {len(tasks)} tasks")
-
-            # Create and run crew
-            crew = Crew(
-                agents=list(agents.values()),
-                tasks=tasks,
-                verbose=True  # Enable verbose output for detailed logs
-            )
-
-            # Execute the tasks
-            logger.info(f"Starting crew execution for task {task_id}")
-            result = crew.kickoff()
-            logger.info(f"Task {task_id} completed successfully")
-            logger.debug(f"Task result: {result}")
-
-            # Update completion status for all tasks
-            for tracking_id in task_ids:
-                self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
-                self.task_logs[tracking_id].append({
-                    "timestamp": self.task_metadata[tracking_id]["end_time"],
-                    "event": "task_completed",
-                    "task_name": self.task_metadata[tracking_id]["name"],
-                    "agent": self.task_metadata[tracking_id]["agent_role"]
-                })
-
-            # Format the result as JSON
-            formatted_result = self.format_result(result)
-
-            # Collect all task logs
-            all_task_logs = []
-            for tracking_id in task_ids:
-                all_task_logs.extend(self.task_logs[tracking_id])
-
-            # Sort logs by timestamp
-            all_task_logs.sort(key=lambda x: x['timestamp'])
-
-            # Create final JSON output
-            output = {
-                "result": formatted_result,
-                "task_logs": all_task_logs,  # Include structured logs from all subtasks
-                "file_logs": self.read_log_file(log_file),  # Include file logs as backup
-                "metadata": {
-                    "task_id": task_id,
-                    "query": query,
-                    "timestamp": str(datetime.utcnow())
+            try:
+                # Create agents
+                agents = {
+                    name: self.create_agent(name, config)
+                    for name, config in self.agent_configs.items()
                 }
-            }
+                logger.debug(f"Created {len(agents)} agents")
 
-            # Store result
-            self.task_queue.update_task(
-                task_id=task_id,
-                status='completed',
-                result=json.dumps(output, ensure_ascii=False)
-            )
+                # Create tasks in the correct order based on dependencies
+                tasks = []
+                task_ids = []  # Store corresponding task IDs
+                for task_name, config in self.task_configs.items():
+                    agent = agents[config['agent']]
+                    task, tracking_id = self.create_task(task_name, config, agent, query)
+                    tasks.append(task)
+                    task_ids.append(tracking_id)
+                logger.debug(f"Created {len(tasks)} tasks")
+
+                # Create and run crew
+                crew = Crew(
+                    agents=list(agents.values()),
+                    tasks=tasks,
+                    verbose=True  # Enable verbose output for detailed logs
+                )
+
+                # Execute the tasks
+                logger.info(f"Starting crew execution for task {task_id}")
+                result = crew.kickoff()
+                logger.info(f"Task {task_id} completed successfully")
+                logger.debug(f"Task result: {result}")
+
+                # Update completion status for all tasks
+                for tracking_id in task_ids:
+                    self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
+                    self.task_logs[tracking_id].append({
+                        "timestamp": self.task_metadata[tracking_id]["end_time"],
+                        "event": "task_completed",
+                        "task_name": self.task_metadata[tracking_id]["name"],
+                        "agent": self.task_metadata[tracking_id]["agent_role"]
+                    })
+
+                # Format the result as JSON
+                formatted_result = self.format_result(result)
+
+                # Collect all task logs and ensure they're JSON serializable
+                all_task_logs = []
+                for tracking_id in task_ids:
+                    logs = self.task_logs[tracking_id]
+                    # Ensure each log entry is JSON serializable
+                    sanitized_logs = []
+                    for log in logs:
+                        sanitized_log = {
+                            "timestamp": log["timestamp"],
+                            "event": log["event"],
+                            "message": str(log.get("message", "")),
+                            "task_name": log.get("task_name", ""),
+                            "agent": log.get("agent", ""),
+                            "level": log.get("level", "INFO")
+                        }
+                        # Add additional fields if present
+                        if "tool" in log:
+                            sanitized_log["tool"] = str(log["tool"])
+                            sanitized_log["tool_input"] = str(log.get("input", ""))
+                            sanitized_log["tool_output"] = str(log.get("output", ""))[:500]  # Truncate long outputs
+                        if "task_info" in log:
+                            sanitized_log["task_info"] = {
+                                k: str(v) for k, v in log["task_info"].items()
+                            }
+                        sanitized_logs.append(sanitized_log)
+                    all_task_logs.extend(sanitized_logs)
+
+                # Sort logs by timestamp
+                all_task_logs.sort(key=lambda x: x['timestamp'])
+
+                # Create final JSON output with guaranteed JSON-serializable content
+                output = {
+                    "result": formatted_result,
+                    "task_logs": all_task_logs,
+                    "file_logs": self.read_log_file(log_file),
+                    "metadata": {
+                        "task_id": task_id,
+                        "query": query,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                }
+
+                # Verify JSON serialization before storing
+                json.dumps(output)  # This will raise an error if output is not JSON serializable
+
+                # Store result
+                self.task_queue.update_task(
+                    task_id=task_id,
+                    status='completed',
+                    result=json.dumps(output, ensure_ascii=False)
+                )
+
+            except json.JSONDecodeError as je:
+                logger.error(f"JSON serialization error: {str(je)}")
+                raise
+            except Exception as e:
+                logger.error(f"Task processing error: {str(e)}", exc_info=True)
+                raise
 
             # Clean up
             logger.removeHandler(file_handler)
@@ -285,13 +318,21 @@ Track your progress using this task ID: {task_tracking_id}
 
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
+            # Create a safe error output that's guaranteed to be JSON serializable
             error_output = {
                 "result": {"error": str(e)},
-                "task_logs": self.task_logs.get(task_id, []),
+                "task_logs": [
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "event": "error",
+                        "message": str(e),
+                        "level": "ERROR"
+                    }
+                ],
                 "metadata": {
                     "task_id": task_id,
                     "query": query,
-                    "timestamp": str(datetime.utcnow())
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             }
             self.task_queue.update_task(
