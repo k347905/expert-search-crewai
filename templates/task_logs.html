@@ -3,17 +3,21 @@
 {% block content %}
 <div class="container my-4">
     <h2>Task Logs - {{ task_id }}</h2>
-    
+
     <div class="card mb-4">
         <div class="card-header">
             <h5>Metadata</h5>
         </div>
         <div class="card-body">
             <dl class="row">
-                {% for key, value in logs.metadata.items() %}
-                <dt class="col-sm-3">{{ key }}</dt>
-                <dd class="col-sm-9">{{ value }}</dd>
-                {% endfor %}
+                {% if logs.metadata %}
+                    {% for key, value in logs.metadata.items() %}
+                    <dt class="col-sm-3">{{ key }}</dt>
+                    <dd class="col-sm-9">{{ value }}</dd>
+                    {% endfor %}
+                {% else %}
+                    <dt class="col-12">No metadata available</dt>
+                {% endif %}
             </dl>
         </div>
     </div>
@@ -24,13 +28,27 @@
         </div>
         <div class="card-body">
             <div class="log-container" style="max-height: 400px; overflow-y: auto;">
-                {% for log in logs.task_logs %}
-                <div class="log-entry">
-                    <span class="timestamp text-muted">{{ log.timestamp }}</span>
-                    <span class="level level-{{ log.level.lower() }}">{{ log.level }}</span>
-                    <span class="message">{{ log.message }}</span>
-                </div>
-                {% endfor %}
+                {% if logs.task_logs %}
+                    {% for log in logs.task_logs %}
+                    <div class="log-entry">
+                        <span class="timestamp text-muted">{{ log.timestamp }}</span>
+                        <span class="level level-{{ log.level.lower() }}">{{ log.level }}</span>
+                        <span class="message">{{ log.message }}</span>
+                        {% if log.event %}
+                        <span class="event">[{{ log.event }}]</span>
+                        {% endif %}
+                        {% if log.tool %}
+                        <div class="tool-info">
+                            <strong>Tool:</strong> {{ log.tool }}<br>
+                            <strong>Input:</strong> {{ log.tool_input }}<br>
+                            <strong>Output:</strong> {{ log.tool_output }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No task logs available</p>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -41,7 +59,16 @@
             <h5>File Logs</h5>
         </div>
         <div class="card-body">
-            <pre class="log-file" style="max-height: 400px; overflow-y: auto;">{{ logs.file_logs }}</pre>
+            <pre class="log-file" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">{{ logs.file_logs }}</pre>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-header">
+            <h5>File Logs</h5>
+        </div>
+        <div class="card-body">
+            <p>No file logs available</p>
         </div>
     </div>
     {% endif %}
@@ -50,7 +77,9 @@
 <style>
 .log-entry {
     font-family: monospace;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    padding: 4px;
+    border-bottom: 1px solid #eee;
     white-space: pre-wrap;
     word-wrap: break-word;
 }
@@ -63,6 +92,18 @@
     border-radius: 3px;
     margin-right: 8px;
     font-weight: bold;
+}
+.event {
+    color: #666;
+    margin-left: 8px;
+    font-style: italic;
+}
+.tool-info {
+    margin-left: 20px;
+    margin-top: 4px;
+    padding: 4px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
 }
 .level-debug { background-color: #e3f2fd; color: #0d47a1; }
 .level-info { background-color: #e8f5e9; color: #1b5e20; }

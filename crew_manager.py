@@ -351,11 +351,17 @@ Track your progress using this task ID: {task_tracking_id}
     def read_log_file(self, log_file):
         """Read and return the contents of a log file"""
         try:
-            with open(log_file, 'r') as f:
-                return f.read()
+            if not os.path.exists(log_file):
+                return "No log file found"
+            with open(log_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Ensure content is not empty
+                if not content.strip():
+                    return "Log file is empty"
+                return content
         except Exception as e:
             logger.error(f"Error reading log file: {str(e)}")
-            return str(e)
+            return f"Error reading log file: {str(e)}"
 
     def format_result(self, result):
         """Format the CrewAI output into our expected JSON structure"""
