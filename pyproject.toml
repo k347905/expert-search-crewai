@@ -20,5 +20,6 @@ dependencies = [
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
     "sqlalchemy>=2.0.38",
+    "trafilatura>=2.0.0",
     "urllib3>=2.3.0",
 ]

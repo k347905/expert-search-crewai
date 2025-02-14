@@ -44,9 +44,31 @@ async function viewTaskDetails(taskId, token) {
         if (webhookDelivery) {
             webhookStatus.textContent = webhookDelivery.status;
             webhookStatus.className = `badge ${webhookDelivery.status === 'success' ? 'bg-success' : 'bg-danger'}`;
+
+            // Display webhook payload
+            const payloadPre = document.getElementById('modalWebhookPayload');
+            if (webhookDelivery.last_payload) {
+                payloadPre.textContent = JSON.stringify(webhookDelivery.last_payload, null, 2);
+            } else {
+                payloadPre.textContent = 'No payload available';
+            }
+
+            // Display webhook response
+            const responsePre = document.getElementById('modalWebhookResponse');
+            if (webhookDelivery.response) {
+                const responseText = `Status Code: ${webhookDelivery.response.status_code}\n\nResponse:\n${webhookDelivery.response.response_text}`;
+                responsePre.textContent = responseText;
+            } else if (webhookDelivery.error) {
+                const errorText = `Error Type: ${webhookDelivery.error.type}\n\nError Message:\n${webhookDelivery.error.message}`;
+                responsePre.textContent = errorText;
+            } else {
+                responsePre.textContent = 'No response available';
+            }
         } else {
             webhookStatus.textContent = 'Not attempted';
             webhookStatus.className = 'badge bg-secondary';
+            document.getElementById('modalWebhookPayload').textContent = 'No payload available';
+            document.getElementById('modalWebhookResponse').textContent = 'No response available';
         }
 
         document.getElementById('modalWebhookLastAttempt').textContent = 

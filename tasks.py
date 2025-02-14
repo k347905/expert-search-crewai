@@ -105,6 +105,19 @@ class TaskQueue:
 
             logger.info(f"Sending webhook for task {task.id} with payload size: {len(str(payload))} bytes")
 
+            # Store the payload and attempt time before sending
+            task.last_webhook_attempt = datetime.utcnow()
+            task.webhook_retries += 1
+
+            # Store the payload in task metadata
+            current_metadata = task.task_metadata or {}
+            current_metadata['webhook_delivery'] = {
+                'last_payload': payload,
+                'timestamp': task.last_webhook_attempt.isoformat()
+            }
+            task.task_metadata = current_metadata
+            db.session.commit()
+
             response = self.session.post(
                 task.webhook_url,
                 json=payload,
@@ -118,6 +131,15 @@ class TaskQueue:
                        f"Status code: {response.status_code}, "
                        f"Response: {response.text[:200]}...")  # Log first 200 chars of response
 
+            # Update metadata with success status
+            current_metadata['webhook_delivery']['status'] = 'success'
+            current_metadata['webhook_delivery']['response'] = {
+                'status_code': response.status_code,
+                'response_text': response.text[:200]  # Store first 200 chars of response
+            }
+            task.task_metadata = current_metadata
+            db.session.commit()
+
             return True
 
         except requests.exceptions.RequestException as e:
@@ -125,6 +147,17 @@ class TaskQueue:
             logger.error(f"Error type: {type(e).__name__}")
             logger.error(f"Error message: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
+
+            # Update metadata with failure status
+            current_metadata = task.task_metadata or {}
+            current_metadata['webhook_delivery']['status'] = 'failed'
+            current_metadata['webhook_delivery']['error'] = {
+                'type': type(e).__name__,
+                'message': str(e)
+            }
+            task.task_metadata = current_metadata
+            db.session.commit()
+
             return False
 
         except Exception as e:
