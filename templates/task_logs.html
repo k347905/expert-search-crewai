@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container my-4">
+    <h2>Task Logs - {{ task_id }}</h2>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Metadata</h5>
+        </div>
+        <div class="card-body">
+            <dl class="row">
+                {% for key, value in logs.metadata.items() %}
+                <dt class="col-sm-3">{{ key }}</dt>
+                <dd class="col-sm-9">{{ value }}</dd>
+                {% endfor %}
+            </dl>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Task Logs</h5>
+        </div>
+        <div class="card-body">
+            <div class="log-container" style="max-height: 400px; overflow-y: auto;">
+                {% for log in logs.task_logs %}
+                <div class="log-entry">
+                    <span class="timestamp text-muted">{{ log.timestamp }}</span>
+                    <span class="level level-{{ log.level.lower() }}">{{ log.level }}</span>
+                    <span class="message">{{ log.message }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% if logs.file_logs %}
+    <div class="card">
+        <div class="card-header">
+            <h5>File Logs</h5>
+        </div>
+        <div class="card-body">
+            <pre class="log-file" style="max-height: 400px; overflow-y: auto;">{{ logs.file_logs }}</pre>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.log-entry {
+    font-family: monospace;
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.timestamp {
+    color: #666;
+    margin-right: 8px;
+}
+.level {
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 8px;
+    font-weight: bold;
+}
+.level-debug { background-color: #e3f2fd; color: #0d47a1; }
+.level-info { background-color: #e8f5e9; color: #1b5e20; }
+.level-warning { background-color: #fff3e0; color: #e65100; }
+.level-error { background-color: #ffebee; color: #b71c1c; }
+</style>
+{% endblock %}

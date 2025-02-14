@@ -112,6 +112,25 @@ def task_dashboard():
                          tasks=tasks, 
                          search_mode=app.config['search_mode'])
 
+@app.route('/tasks/<task_id>/logs')
+def task_logs(task_id):
+    """Display logs for a specific task"""
+    task = task_queue.get_task(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    try:
+        result = json.loads(task.get('result', '{}'))
+        logs = {
+            'task_logs': result.get('task_logs', []),
+            'file_logs': result.get('file_logs', ''),
+            'metadata': result.get('metadata', {})
+        }
+        return render_template('task_logs.html', task_id=task_id, logs=logs)
+    except Exception as e:
+        logger.error(f"Error parsing task logs: {str(e)}")
+        return jsonify({'error': 'Error parsing logs'}), 500
+
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
     """Create a new task"""
