@@ -39,35 +39,37 @@ class CrewManager:
 
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
-        logger.debug(f"Creating agent: {agent_name}")
+        logger.debug(f"Creating agent: {agent_name} with role: {config['role']}")
         # Assign tools based on agent role
         tools = []
         if agent_name == "search_expert":
             tools = [search1688]
+            logger.debug("Assigned search1688 tool to search_expert agent")
         elif agent_name == "detail_extraction_agent":
             tools = [item_detail]
+            logger.debug("Assigned item_detail tool to detail_extraction_agent")
 
         # Add instructions for JSON output format
         output_format = """
-You must provide output in the following JSON format:
-{
-    "output_json": {
-        "items": [
-            {
-                "id": "string",
-                "name": "string",
-                "description": "string",
-                "price": "number",
-                "url": "string"
+        You must provide output in the following JSON format:
+        {
+            "output_json": {
+                "items": [
+                    {
+                        "id": "string",
+                        "name": "string",
+                        "description": "string",
+                        "price": "number",
+                        "url": "string"
+                    }
+                ],
+                "metadata": {
+                    "query": "string",
+                    "timestamp": "ISO string"
+                }
             }
-        ],
-        "metadata": {
-            "query": "string",
-            "timestamp": "ISO string"
         }
-    }
-}
-"""
+        """
         # Append output format to backstory
         enhanced_backstory = f"{config['backstory']}\n\n{output_format}"
 
@@ -75,6 +77,7 @@ You must provide output in the following JSON format:
         agent_logger = logging.getLogger(f"agent.{agent_name}")
         agent_logger.setLevel(logging.DEBUG)
 
+        logger.debug(f"Creating agent with goal: {config['goal'].format(query='{query}')}")
         agent = Agent(
             role=config['role'],
             goal=config['goal'].format(query="{query}"),  # Allow for query formatting
@@ -84,10 +87,12 @@ You must provide output in the following JSON format:
             tools=tools,
             llm_config={
                 "model": "gpt-4",
-                "api_key": self.api_key
+                "api_key": self.api_key,
+                "temperature": 0.7,  # Add temperature for more detailed responses
+                "request_timeout": 120  # Increase timeout for complex tasks
             }
         )
-        logger.debug(f"Agent {agent_name} created successfully")
+        logger.info(f"Agent {agent_name} created successfully with role: {config['role']}")
         return agent
 
     def log_handler(self, task_id):
@@ -202,39 +207,44 @@ Track your progress using this task ID: {task_tracking_id}
             logger.addHandler(file_handler)
             logger.addHandler(memory_handler)
 
-            logger.info(f"Starting task {task_id}")
-            logger.debug(f"Processing query: {query}")
+            logger.info(f"Starting task {task_id} with query: {query}")
+            logger.debug(f"Processing query: {query} in {'mock' if os.environ.get('API_MODE') == 'mock' else 'online'} mode")
 
             try:
                 # Create agents
+                logger.info("Creating agents from configuration")
                 agents = {
                     name: self.create_agent(name, config)
                     for name, config in self.agent_configs.items()
                 }
-                logger.debug(f"Created {len(agents)} agents")
+                logger.debug(f"Created {len(agents)} agents: {', '.join(agents.keys())}")
 
                 # Create tasks in the correct order based on dependencies
                 tasks = []
                 task_ids = []  # Store corresponding task IDs
+                logger.info("Creating CrewAI tasks")
                 for task_name, config in self.task_configs.items():
+                    logger.debug(f"Creating task: {task_name} with agent: {config['agent']}")
                     agent = agents[config['agent']]
                     task, tracking_id = self.create_task(task_name, config, agent, query)
                     tasks.append(task)
                     task_ids.append(tracking_id)
-                logger.debug(f"Created {len(tasks)} tasks")
+                    logger.debug(f"Task {task_name} created with tracking ID: {tracking_id}")
 
                 # Create and run crew
+                logger.info("Initializing CrewAI crew")
                 crew = Crew(
                     agents=list(agents.values()),
                     tasks=tasks,
-                    verbose=True  # Enable verbose output for detailed logs
+                    verbose=True,  # Enable verbose output for detailed logs
+                    process_name=f"Task {task_id}"  # Add process name for better log identification
                 )
 
                 # Execute the tasks
                 logger.info(f"Starting crew execution for task {task_id}")
                 result = crew.kickoff()
                 logger.info(f"Task {task_id} completed successfully")
-                logger.debug(f"Task result: {result}")
+                logger.debug(f"Raw result: {result}")
 
                 # Update completion status for all tasks
                 for tracking_id in task_ids:
