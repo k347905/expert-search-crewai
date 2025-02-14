@@ -8,6 +8,7 @@ from database import db
 from tools.search_1688 import search1688, item_detail
 from datetime import datetime
 import uuid
+from collections import defaultdict
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class CrewManager:
     def __init__(self):
         self.task_queue = TaskQueue()
         self.api_key = os.environ.get("OPENAI_API_KEY")
+        self.task_logs = defaultdict(list)  # Store logs for each task
 
         # Load agent and task configurations from root directory
         logger.debug("Loading agent and task configurations")
@@ -68,6 +70,10 @@ You must provide output in the following JSON format:
         # Append output format to backstory
         enhanced_backstory = f"{config['backstory']}\n\n{output_format}"
 
+        # Create a custom logger for this agent
+        agent_logger = logging.getLogger(f"agent.{agent_name}")
+        agent_logger.setLevel(logging.DEBUG)
+
         agent = Agent(
             role=config['role'],
             goal=config['goal'].format(query="{query}"),  # Allow for query formatting
@@ -82,6 +88,140 @@ You must provide output in the following JSON format:
         )
         logger.debug(f"Agent {agent_name} created successfully")
         return agent
+
+    def log_handler(self, task_id):
+        """Create a custom log handler that stores logs in memory"""
+        class TaskLogHandler(logging.Handler):
+            def __init__(self, crew_manager, task_id):
+                super().__init__()
+                self.crew_manager = crew_manager
+                self.task_id = task_id
+
+            def emit(self, record):
+                log_entry = {
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'level': record.levelname,
+                    'message': self.format(record)
+                }
+                self.crew_manager.task_logs[self.task_id].append(log_entry)
+
+        handler = TaskLogHandler(self, task_id)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        return handler
+
+    def process_task(self, task_id: str, query: str):
+        """Process a task using CrewAI with the configured agents"""
+        try:
+            # Create a task-specific log handler
+            log_file = f'logs/crew_{task_id}.log'
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.DEBUG)
+            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_formatter)
+
+            # Add memory handler for storing logs
+            memory_handler = self.log_handler(task_id)
+
+            # Add both handlers
+            logger.addHandler(file_handler)
+            logger.addHandler(memory_handler)
+
+            logger.info(f"Starting task {task_id}")
+            logger.debug(f"Processing query: {query}")
+
+            # Create agents
+            agents = {
+                name: self.create_agent(name, config)
+                for name, config in self.agent_configs.items()
+            }
+            logger.debug(f"Created {len(agents)} agents")
+
+            # Create tasks in the correct order based on dependencies
+            tasks = []
+            for task_name, config in self.task_configs.items():
+                agent = agents[config['agent']]
+                task = self.create_task(task_name, config, agent, query)
+                tasks.append(task)
+            logger.debug(f"Created {len(tasks)} tasks")
+
+            # Create and run crew
+            crew = Crew(
+                agents=list(agents.values()),
+                tasks=tasks,
+                verbose=True  # Enable verbose output for detailed logs
+            )
+
+            # Execute the tasks
+            logger.info(f"Starting crew execution for task {task_id}")
+            result = crew.kickoff()
+            logger.info(f"Task {task_id} completed successfully")
+            logger.debug(f"Task result: {result}")
+
+            # Format the result as JSON
+            formatted_result = self.format_result(result)
+
+            # Get the task logs from memory
+            task_logs = self.task_logs[task_id]
+
+            # Create final JSON output
+            output = {
+                "result": formatted_result,
+                "task_logs": task_logs,  # Include structured logs
+                "file_logs": self.read_log_file(log_file),  # Include file logs as backup
+                "metadata": {
+                    "task_id": task_id,
+                    "query": query,
+                    "timestamp": str(datetime.utcnow())
+                }
+            }
+
+            # Store result
+            self.task_queue.update_task(
+                task_id=task_id,
+                status='completed',
+                result=json.dumps(output, ensure_ascii=False)
+            )
+
+            # Clean up
+            logger.removeHandler(file_handler)
+            logger.removeHandler(memory_handler)
+            file_handler.close()
+
+            # Keep log file for debugging
+            logger.info(f"Task logs saved to {log_file}")
+
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
+            error_output = {
+                "result": {"error": str(e)},
+                "task_logs": self.task_logs.get(task_id, []),
+                "metadata": {
+                    "task_id": task_id,
+                    "query": query,
+                    "timestamp": str(datetime.utcnow())
+                }
+            }
+            self.task_queue.update_task(
+                task_id=task_id,
+                status='failed',
+                result=json.dumps(error_output, ensure_ascii=False)
+            )
+
+            # Clean up in case of error
+            if 'file_handler' in locals():
+                logger.removeHandler(file_handler)
+                file_handler.close()
+            if 'memory_handler' in locals():
+                logger.removeHandler(memory_handler)
+
+    def read_log_file(self, log_file):
+        """Read and return the contents of a log file"""
+        try:
+            with open(log_file, 'r') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error reading log file: {str(e)}")
+            return str(e)
 
     def create_task(self, task_name, config, agent, query):
         """Create a CrewAI task from configuration"""
@@ -121,109 +261,6 @@ Set this as the output_json property of your response.
             agent=agent,
             expected_output=json.dumps(output_format, indent=2)
         )
-
-    def process_task(self, task_id: str, query: str):
-        """Process a task using CrewAI with the configured agents"""
-        try:
-            # Create a task-specific log handler
-            log_file = f'logs/crew_{task_id}.log'
-            task_handler = logging.FileHandler(log_file)
-            task_handler.setLevel(logging.DEBUG)
-            task_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            task_handler.setFormatter(task_formatter)
-            logger.addHandler(task_handler)
-
-            logger.info(f"Starting task {task_id}")
-            logger.debug(f"Processing query: {query}")
-
-            # Create agents
-            agents = {
-                name: self.create_agent(name, config)
-                for name, config in self.agent_configs.items()
-            }
-            logger.debug(f"Created {len(agents)} agents")
-
-            # Create tasks in the correct order based on dependencies
-            tasks = []
-            for task_name, config in self.task_configs.items():
-                agent = agents[config['agent']]
-                task = self.create_task(task_name, config, agent, query)
-                tasks.append(task)
-            logger.debug(f"Created {len(tasks)} tasks")
-
-            # Create and run crew
-            crew = Crew(
-                agents=list(agents.values()),
-                tasks=tasks,
-                verbose=True  # Enable verbose output for detailed logs
-            )
-
-            # Execute the tasks
-            logger.info(f"Starting crew execution for task {task_id}")
-            result = crew.kickoff()
-            logger.info(f"Task {task_id} completed successfully")
-            logger.debug(f"Task result: {result}")
-
-            # Format the result as JSON
-            formatted_result = self.format_result(result)
-
-            # Read the task-specific logs
-            try:
-                with open(log_file, 'r') as f:
-                    crew_logs = f.read()
-            except Exception as e:
-                logger.error(f"Error reading crew logs: {str(e)}")
-                crew_logs = str(e)
-
-            # Create final JSON output
-            output = {
-                "result": formatted_result,
-                "logs": crew_logs,
-                "metadata": {
-                    "task_id": task_id,
-                    "query": query,
-                    "timestamp": str(datetime.utcnow())
-                }
-            }
-
-            # Store result
-            self.task_queue.update_task(
-                task_id=task_id,
-                status='completed',
-                result=json.dumps(output, ensure_ascii=False)
-            )
-
-            # Clean up
-            logger.removeHandler(task_handler)
-            task_handler.close()
-            try:
-                os.remove(log_file)  # Remove the task-specific log file
-            except Exception as e:
-                logger.error(f"Error removing log file: {str(e)}")
-
-        except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
-            error_output = {
-                "result": {"error": str(e)},
-                "metadata": {
-                    "task_id": task_id,
-                    "query": query,
-                    "timestamp": str(datetime.utcnow())
-                }
-            }
-            self.task_queue.update_task(
-                task_id=task_id,
-                status='failed',
-                result=json.dumps(error_output, ensure_ascii=False)
-            )
-
-            # Clean up in case of error
-            logger.removeHandler(task_handler)
-            task_handler.close()
-            try:
-                os.remove(log_file)
-            except Exception as e:
-                logger.error(f"Error removing log file: {str(e)}")
 
     def format_result(self, result):
         """Format the CrewAI output into our expected JSON structure"""
