@@ -12,6 +12,8 @@ class Task(db.Model):
     completed_at = db.Column(db.DateTime)
     task_metadata = db.Column(db.JSON)  # Renamed from metadata to task_metadata
     webhook_url = db.Column(db.String(500))  # New field for webhook URL
+    webhook_retries = db.Column(db.Integer, default=0)  # Track number of webhook retry attempts
+    last_webhook_attempt = db.Column(db.DateTime)  # Track last webhook attempt time
 
     def __init__(self, id, description, user_id, webhook_url=None):
         self.id = id
@@ -23,6 +25,8 @@ class Task(db.Model):
         self.completed_at = None
         self.task_metadata = {}
         self.webhook_url = webhook_url
+        self.webhook_retries = 0
+        self.last_webhook_attempt = None
 
     def to_dict(self):
         """Convert task to dictionary representation"""
@@ -35,7 +39,11 @@ class Task(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'metadata': self.task_metadata,  # Keep the API response consistent
-            'webhook_url': self.webhook_url
+            'webhook_url': self.webhook_url,
+            'webhook_status': {
+                'retries': self.webhook_retries,
+                'last_attempt': self.last_webhook_attempt.isoformat() if self.last_webhook_attempt else None
+            }
         }
 
     def update_status(self, status, result=None):

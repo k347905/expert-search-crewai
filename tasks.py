@@ -6,10 +6,24 @@ from database import db
 from models import Task
 import uuid
 from datetime import datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import traceback
 
 logger = logging.getLogger(__name__)
 
 class TaskQueue:
+    def __init__(self):
+        # Configure requests session with retry mechanism
+        self.session = requests.Session()
+        retries = Retry(
+            total=3,  # number of retries
+            backoff_factor=1,  # wait 1, 2, 4 seconds between retries
+            status_forcelist=[408, 429, 500, 502, 503, 504]
+        )
+        self.session.mount('http://', HTTPAdapter(max_retries=retries))
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+
     def add_task(self, description: str, user_id: str, webhook_url: Optional[str] = None) -> str:
         """Add a new task to the queue"""
         task = Task(id=str(uuid.uuid4()), description=description, user_id=user_id, webhook_url=webhook_url)
@@ -39,7 +53,14 @@ class TaskQueue:
             db.session.commit()
 
             # Send webhook notification if URL is configured
-            self._send_webhook_notification(task)
+            if task.webhook_url:
+                success = self._send_webhook_notification(task)
+                self.update_task_metadata(task_id, {
+                    'webhook_delivery': {
+                        'status': 'success' if success else 'failed',
+                        'timestamp': datetime.utcnow().isoformat(),
+                    }
+                })
 
     def update_task_metadata(self, task_id: str, metadata: Dict):
         """Update task metadata"""
@@ -50,12 +71,17 @@ class TaskQueue:
             task.task_metadata = current_metadata
             db.session.commit()
 
-    def _send_webhook_notification(self, task: Task):
-        """Send webhook notification for task updates"""
+    def _send_webhook_notification(self, task: Task) -> bool:
+        """
+        Send webhook notification for task updates
+        Returns: bool indicating success/failure
+        """
         if not task.webhook_url:
-            return
+            return False
 
         try:
+            logger.info(f"Preparing webhook notification for task {task.id} to {task.webhook_url}")
+
             # Extract items from task result if available
             items = []
             if task.result:
@@ -63,30 +89,45 @@ class TaskQueue:
                     result_data = json.loads(task.result)
                     if isinstance(result_data, dict) and 'result' in result_data:
                         items = result_data['result'].get('items', [])
-                except json.JSONDecodeError:
-                    logger.warning(f"Could not parse task result as JSON for task {task.id}")
+                except json.JSONDecodeError as je:
+                    logger.error(f"JSON decode error for task {task.id}: {str(je)}")
                     items = []
 
-            # Simplified payload with only items, task_id and user_id
+            # Enhanced payload with additional metadata
             payload = {
                 'task_id': task.id,
                 'user_id': task.user_id,
-                'items': items
+                'items': items,
+                'status': task.status,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None
             }
 
-            response = requests.post(
+            logger.info(f"Sending webhook for task {task.id} with payload size: {len(str(payload))} bytes")
+
+            response = self.session.post(
                 task.webhook_url,
                 json=payload,
                 headers={'Content-Type': 'application/json'},
-                timeout=10
+                timeout=30  # increased timeout
             )
 
-            logger.info(f"Webhook notification sent for task {task.id} to {task.webhook_url}. "
-                       f"Status code: {response.status_code}")
+            response.raise_for_status()  # Raise an error for bad status codes
 
-            if response.status_code not in (200, 201, 202):
-                logger.warning(f"Webhook notification failed for task {task.id}. "
-                             f"Status code: {response.status_code}")
+            logger.info(f"Webhook notification successful for task {task.id}. "
+                       f"Status code: {response.status_code}, "
+                       f"Response: {response.text[:200]}...")  # Log first 200 chars of response
+
+            return True
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Webhook delivery failed for task {task.id} to {task.webhook_url}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Error message: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
 
         except Exception as e:
-            logger.error(f"Error sending webhook notification for task {task.id}: {str(e)}")
+            logger.error(f"Unexpected error sending webhook for task {task.id}: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
