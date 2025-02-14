@@ -120,16 +120,46 @@ def task_logs(task_id):
         return jsonify({'error': 'Task not found'}), 404
 
     try:
-        result = json.loads(task.get('result', '{}'))
+        # Get the raw result string
+        result_str = task.get('result', '{}')
+        logger.debug(f"Raw result string for task {task_id}: {result_str[:200]}...")  # Log first 200 chars
+
+        # Parse the JSON
+        result = json.loads(result_str)
+
+        # Prepare logs structure with defaults
         logs = {
             'task_logs': result.get('task_logs', []),
             'file_logs': result.get('file_logs', ''),
             'metadata': result.get('metadata', {})
         }
+
+        # Validate log structure
+        if not isinstance(logs['task_logs'], list):
+            logs['task_logs'] = []
+        if not isinstance(logs['file_logs'], str):
+            logs['file_logs'] = str(logs['file_logs'])
+        if not isinstance(logs['metadata'], dict):
+            logs['metadata'] = {}
+
+        logger.debug(f"Processed logs structure: {str(logs)[:200]}...")  # Log first 200 chars
+
         return render_template('task_logs.html', task_id=task_id, logs=logs)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing task logs for {task_id}: {str(e)}")
+        return render_template('task_logs.html', task_id=task_id, logs={
+            'task_logs': [],
+            'file_logs': f"Error parsing logs: {str(e)}",
+            'metadata': {'error': str(e)}
+        })
     except Exception as e:
-        logger.error(f"Error parsing task logs: {str(e)}")
-        return jsonify({'error': 'Error parsing logs'}), 500
+        logger.error(f"Error processing task logs: {str(e)}")
+        return render_template('task_logs.html', task_id=task_id, logs={
+            'task_logs': [],
+            'file_logs': f"Error processing logs: {str(e)}",
+            'metadata': {'error': str(e)}
+        })
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
