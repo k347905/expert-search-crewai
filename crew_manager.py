@@ -17,13 +17,6 @@ logger.setLevel(logging.DEBUG)
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# File handler for CrewAI logs
-crew_handler = logging.FileHandler('logs/crew.log')
-crew_handler.setLevel(logging.DEBUG)
-crew_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-crew_handler.setFormatter(crew_formatter)
-logger.addHandler(crew_handler)
-
 class CrewManager:
     def __init__(self):
         self.task_queue = TaskQueue()
@@ -132,7 +125,15 @@ Set this as the output_json property of your response.
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
         try:
-            logger.info(f"Starting to process task {task_id}")
+            # Create a task-specific log handler
+            log_file = f'logs/crew_{task_id}.log'
+            task_handler = logging.FileHandler(log_file)
+            task_handler.setLevel(logging.DEBUG)
+            task_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            task_handler.setFormatter(task_formatter)
+            logger.addHandler(task_handler)
+
+            logger.info(f"Starting task {task_id}")
             logger.debug(f"Processing query: {query}")
 
             # Create agents
@@ -166,9 +167,9 @@ Set this as the output_json property of your response.
             # Format the result as JSON
             formatted_result = self.format_result(result)
 
-            # Read the crew logs
+            # Read the task-specific logs
             try:
-                with open('logs/crew.log', 'r') as f:
+                with open(log_file, 'r') as f:
                     crew_logs = f.read()
             except Exception as e:
                 logger.error(f"Error reading crew logs: {str(e)}")
@@ -192,6 +193,14 @@ Set this as the output_json property of your response.
                 result=json.dumps(output, ensure_ascii=False)
             )
 
+            # Clean up
+            logger.removeHandler(task_handler)
+            task_handler.close()
+            try:
+                os.remove(log_file)  # Remove the task-specific log file
+            except Exception as e:
+                logger.error(f"Error removing log file: {str(e)}")
+
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
             error_output = {
@@ -207,6 +216,14 @@ Set this as the output_json property of your response.
                 status='failed',
                 result=json.dumps(error_output, ensure_ascii=False)
             )
+
+            # Clean up in case of error
+            logger.removeHandler(task_handler)
+            task_handler.close()
+            try:
+                os.remove(log_file)
+            except Exception as e:
+                logger.error(f"Error removing log file: {str(e)}")
 
     def format_result(self, result):
         """Format the CrewAI output into our expected JSON structure"""
