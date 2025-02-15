@@ -27,12 +27,24 @@ class CrewManager:
         self.task_logs = defaultdict(list)  # Store logs for each task
         self.task_metadata = {}  # Store task metadata
 
-        # Initialize AgentOps
-        agentops.configure(
-            api_key=os.environ.get("AGENTOPS_API_KEY"),
-            instrument_llm_calls=True,
-            auto_start_session=False  # We'll manage sessions manually
-        )
+        # Initialize AgentOps with error handling
+        agentops_api_key = os.environ.get("AGENTOPS_API_KEY")
+        if not agentops_api_key:
+            logger.error("AGENTOPS_API_KEY not found in environment variables")
+            raise ValueError("AGENTOPS_API_KEY is required")
+
+        try:
+            # Configure AgentOps
+            logger.debug("Configuring AgentOps...")
+            agentops.configure(
+                api_key=agentops_api_key,
+                instrument_llm_calls=True,
+                auto_start_session=False
+            )
+            logger.debug("AgentOps configured successfully")
+        except Exception as e:
+            logger.error(f"Failed to configure AgentOps: {str(e)}")
+            raise
 
         # Load agent and task configurations from root directory
         logger.debug("Loading agent and task configurations")
@@ -46,86 +58,86 @@ class CrewManager:
             logger.error(f"Error loading configuration files: {str(e)}")
             raise
 
+    def create_session(self, tags=None, metadata=None):
+        """Helper method to create and verify AgentOps session"""
+        try:
+            logger.debug(f"Creating AgentOps session with tags: {tags}")
+            session = agentops.init(
+                tags=tags or [],
+                instrument_llm_calls=True
+            )
+
+            if session is None:
+                logger.error("Failed to create AgentOps session - returned None")
+                raise RuntimeError("Failed to create AgentOps session")
+
+            if metadata:
+                logger.debug(f"Setting session metadata: {metadata}")
+                session.set_metadata(metadata)
+
+            return session
+        except Exception as e:
+            logger.error(f"Error creating AgentOps session: {str(e)}")
+            raise
+
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
         logger.debug(f"Creating agent: {agent_name} with role: {config['role']}")
 
-        # Create a new session for this agent
-        session = agentops.init(
-            tags=[agent_name, config['role']],
-            instrument_llm_calls=True
-        )
-
-        # Add agent metadata
-        session.set_metadata({
-            "agent_name": agent_name,
-            "role": config['role'],
-            "goal": config['goal']
-        })
-
-        # Assign tools based on agent role
-        tools = []
-        if agent_name == "search_expert":
-            tools = [search1688]
-            logger.debug("Assigned search1688 tool to search_expert agent")
-        elif agent_name == "detail_extraction_agent":
-            tools = [item_detail]
-            logger.debug("Assigned item_detail tool to detail_extraction_agent")
-
-        # Add instructions for JSON output format
-        output_format = """
-        You must provide output in the following JSON format:
-        {
-            "output_json": {
-                "items": [
-                    {
-                        "id": "string",
-                        "name": "string",
-                        "description": "string",
-                        "price": "number",
-                        "url": "string"
-                    }
-                ],
-                "metadata": {
-                    "query": "string",
-                    "timestamp": "ISO string"
-                }
-            }
-        }
-        """
-        # Append output format to backstory
-        enhanced_backstory = f"{config['backstory']}\n\n{output_format}"
-
-        logger.debug(f"Creating agent with goal: {config['goal'].format(query='{query}')}")
-        agent = Agent(
-            role=config['role'],
-            goal=config['goal'].format(query="{query}"),  # Allow for query formatting
-            backstory=enhanced_backstory,
-            verbose=True,
-            allow_delegation=False,
-            tools=tools,
-            llm_config={
-                "model": "gpt-4",
-                "api_key": self.api_key,
-                "temperature": 0.7,
-                "request_timeout": 120
-            }
-        )
-
-        # Log agent creation
-        session.log_event(
-            "agent_created",
-            metadata={
-                "agent_config": {
+        try:
+            # Create a new session for this agent
+            session = self.create_session(
+                tags=[agent_name, config['role']],
+                metadata={
+                    "agent_name": agent_name,
                     "role": config['role'],
-                    "goal": config['goal'],
-                    "tools": [tool.__name__ for tool in tools]
+                    "goal": config['goal']
                 }
-            }
-        )
+            )
 
-        logger.info(f"Agent {agent_name} created successfully with role: {config['role']}")
-        return agent, session
+            # Assign tools based on agent role
+            tools = []
+            if agent_name == "search_expert":
+                tools = [search1688]
+                logger.debug("Assigned search1688 tool to search_expert agent")
+            elif agent_name == "detail_extraction_agent":
+                tools = [item_detail]
+                logger.debug("Assigned item_detail tool to detail_extraction_agent")
+
+            logger.debug(f"Creating agent with goal: {config['goal'].format(query='{query}')}")
+            agent = Agent(
+                role=config['role'],
+                goal=config['goal'].format(query="{query}"),
+                backstory=config['backstory'],
+                verbose=True,
+                allow_delegation=False,
+                tools=tools,
+                llm_config={
+                    "model": "gpt-4",
+                    "api_key": self.api_key,
+                    "temperature": 0.7,
+                    "request_timeout": 120
+                }
+            )
+
+            # Log agent creation
+            session.log_event(
+                "agent_created",
+                metadata={
+                    "agent_config": {
+                        "role": config['role'],
+                        "goal": config['goal'],
+                        "tools": [tool.__name__ for tool in tools]
+                    }
+                }
+            )
+
+            logger.info(f"Agent {agent_name} created successfully with role: {config['role']}")
+            return agent, session
+
+        except Exception as e:
+            logger.error(f"Error creating agent {agent_name}: {str(e)}")
+            raise
 
     def process_task(self, task_id: str, query: str):
         """Process a task using CrewAI with the configured agents"""
@@ -133,20 +145,20 @@ class CrewManager:
         file_handler = None
         memory_handler = None
         agent_sessions = {}
-        log_file = None  # Initialize log_file variable
-
-        # Start task session with task_id as a tag
-        task_session = agentops.init(
-            tags=["crew_task", f"task_{task_id}"],
-            instrument_llm_calls=True
-        )
-        task_session.set_metadata({
-            "task_type": "crew_task",
-            "task_id": task_id,
-            "query": query
-        })
+        log_file = None
+        task_session = None
 
         try:
+            # Start task session with task_id as a tag
+            task_session = self.create_session(
+                tags=["crew_task", f"task_{task_id}"],
+                metadata={
+                    "task_type": "crew_task",
+                    "task_id": task_id,
+                    "query": query
+                }
+            )
+
             # Create a task-specific log handler
             log_file = f'logs/crew_{task_id}.log'
             file_handler = logging.FileHandler(log_file)
@@ -170,65 +182,65 @@ class CrewManager:
             logger.info(f"Starting task {task_id} with query: {query}")
             logger.debug(f"Processing query: {query} in {'mock' if os.environ.get('API_MODE') == 'mock' else 'online'} mode")
 
-            try:
-                # Create agents
-                logger.info("Creating agents from configuration")
-                agents = {}
-                for name, config in self.agent_configs.items():
-                    agent, session = self.create_agent(name, config)
-                    agents[name] = agent
-                    agent_sessions[name] = session
+            # Create agents
+            logger.info("Creating agents from configuration")
+            agents = {}
+            for name, config in self.agent_configs.items():
+                agent, session = self.create_agent(name, config)
+                agents[name] = agent
+                agent_sessions[name] = session
 
-                logger.debug(f"Created {len(agents)} agents: {', '.join(agents.keys())}")
+            logger.debug(f"Created {len(agents)} agents: {', '.join(agents.keys())}")
 
-                # Create tasks in the correct order based on dependencies
-                tasks = []
-                task_ids = []  # Store corresponding task IDs
-                for task_name, config in self.task_configs.items():
-                    logger.debug(f"Creating task: {task_name} with agent: {config['agent']}")
-                    agent = agents[config['agent']]
-                    task, tracking_id = self.create_task(task_name, config, agent, query)
-                    tasks.append(task)
-                    task_ids.append(tracking_id)
-                    logger.debug(f"Task {task_name} created with tracking ID: {tracking_id}")
+            # Create tasks in the correct order based on dependencies
+            tasks = []
+            task_ids = []  # Store corresponding task IDs
+            for task_name, config in self.task_configs.items():
+                logger.debug(f"Creating task: {task_name} with agent: {config['agent']}")
+                agent = agents[config['agent']]
+                task, tracking_id = self.create_task(task_name, config, agent, query)
+                tasks.append(task)
+                task_ids.append(tracking_id)
+                logger.debug(f"Task {task_name} created with tracking ID: {tracking_id}")
 
-                    # Log subtask creation
-                    task_session.log_event(
-                        "subtask_created",
-                        metadata={
-                            "task_name": task_name,
-                            "tracking_id": tracking_id,
-                            "agent": config['agent']
-                        }
-                    )
-
-                # Create and run crew
-                logger.info("Initializing CrewAI crew")
-                crew = Crew(
-                    agents=list(agents.values()),
-                    tasks=tasks,
-                    verbose=True,
-                    process_name=f"Task {task_id}"
-                )
-
-                # Execute the tasks
-                logger.info(f"Starting crew execution for task {task_id}")
-                result = crew.kickoff()
-
-                # Log successful execution
+                # Log subtask creation
                 task_session.log_event(
-                    "task_completed",
-                    metadata={"status": "success"}
+                    "subtask_created",
+                    metadata={
+                        "task_name": task_name,
+                        "tracking_id": tracking_id,
+                        "agent": config['agent']
+                    }
                 )
 
-                logger.info(f"Task {task_id} completed successfully")
-                logger.debug(f"Raw result: {result}")
+            # Create and run crew
+            logger.info("Initializing CrewAI crew")
+            crew = Crew(
+                agents=list(agents.values()),
+                tasks=tasks,
+                verbose=True,
+                process_name=f"Task {task_id}"
+            )
 
-                # Update task metadata and format result
-                self.update_task_completion(task_id, task_ids, result, query, log_file)
+            # Execute the tasks
+            logger.info(f"Starting crew execution for task {task_id}")
+            result = crew.kickoff()
 
-            except Exception as e:
-                logger.error(f"Task processing error: {str(e)}", exc_info=True)
+            # Log successful execution
+            task_session.log_event(
+                "task_completed",
+                metadata={"status": "success"}
+            )
+
+            logger.info(f"Task {task_id} completed successfully")
+            logger.debug(f"Raw result: {result}")
+
+            # Update task metadata and format result
+            self.update_task_completion(task_id, task_ids, result, query, log_file)
+
+        except Exception as e:
+            logger.error(f"Task processing error: {str(e)}", exc_info=True)
+            if task_session:
                 task_session.log_event(
                     "task_error",
                     metadata={
@@ -236,18 +248,7 @@ class CrewManager:
                         "error_type": type(e).__name__
                     }
                 )
-                raise
-
-        except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
-            task_session.log_event(
-                "task_failed",
-                metadata={
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                }
-            )
-            self.handle_task_error(task_id, str(e), query)
+            raise
 
         finally:
             # Clean up handlers
@@ -259,9 +260,16 @@ class CrewManager:
 
             # End sessions
             if task_session:
-                task_session.end()
+                try:
+                    task_session.end()
+                except Exception as e:
+                    logger.error(f"Error ending task session: {str(e)}")
+
             for session in agent_sessions.values():
-                session.end()
+                try:
+                    session.end()
+                except Exception as e:
+                    logger.error(f"Error ending agent session: {str(e)}")
 
     def update_task_completion(self, task_id, task_ids, result, query, log_file):
         """Update task completion status and store results"""
