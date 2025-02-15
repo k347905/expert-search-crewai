@@ -9,6 +9,8 @@ from tools.search_1688 import search1688, item_detail
 from datetime import datetime
 import uuid
 from collections import defaultdict
+import agentops
+from agentops.session import Session
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -25,6 +27,13 @@ class CrewManager:
         self.task_logs = defaultdict(list)  # Store logs for each task
         self.task_metadata = {}  # Store task metadata
 
+        # Initialize AgentOps
+        agentops.configure(
+            api_key=os.environ.get("AGENTOPS_API_KEY"),
+            instrument_llm_calls=True,
+            auto_start_session=False  # We'll manage sessions manually
+        )
+
         # Load agent and task configurations from root directory
         logger.debug("Loading agent and task configurations")
         try:
@@ -40,6 +49,20 @@ class CrewManager:
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
         logger.debug(f"Creating agent: {agent_name} with role: {config['role']}")
+
+        # Create a new session for this agent
+        session = agentops.init(
+            tags=[agent_name, config['role']],
+            instrument_llm_calls=True
+        )
+
+        # Add agent metadata
+        session.set_metadata({
+            "agent_name": agent_name,
+            "role": config['role'],
+            "goal": config['goal']
+        })
+
         # Assign tools based on agent role
         tools = []
         if agent_name == "search_expert":
@@ -73,10 +96,6 @@ class CrewManager:
         # Append output format to backstory
         enhanced_backstory = f"{config['backstory']}\n\n{output_format}"
 
-        # Create a custom logger for this agent
-        agent_logger = logging.getLogger(f"agent.{agent_name}")
-        agent_logger.setLevel(logging.DEBUG)
-
         logger.debug(f"Creating agent with goal: {config['goal'].format(query='{query}')}")
         agent = Agent(
             role=config['role'],
@@ -88,12 +107,251 @@ class CrewManager:
             llm_config={
                 "model": "gpt-4",
                 "api_key": self.api_key,
-                "temperature": 0.7,  # Add temperature for more detailed responses
-                "request_timeout": 120  # Increase timeout for complex tasks
+                "temperature": 0.7,
+                "request_timeout": 120
             }
         )
+
+        # Log agent creation
+        session.log_event(
+            "agent_created",
+            metadata={
+                "agent_config": {
+                    "role": config['role'],
+                    "goal": config['goal'],
+                    "tools": [tool.__name__ for tool in tools]
+                }
+            }
+        )
+
         logger.info(f"Agent {agent_name} created successfully with role: {config['role']}")
-        return agent
+        return agent, session
+
+    def process_task(self, task_id: str, query: str):
+        """Process a task using CrewAI with the configured agents"""
+        # Initialize variables for cleanup
+        file_handler = None
+        memory_handler = None
+        agent_sessions = {}
+
+        # Start task session
+        task_session = agentops.init(
+            session_id=task_id,
+            tags=["crew_task"],
+            instrument_llm_calls=True
+        )
+        task_session.set_metadata({
+            "task_type": "crew_task",
+            "query": query
+        })
+
+        try:
+            # Create a task-specific log handler
+            log_file = f'logs/crew_{task_id}.log'
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.DEBUG)
+            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_formatter)
+
+            # Add memory handler for storing logs
+            memory_handler = self.log_handler(task_id)
+
+            # Add both handlers
+            logger.addHandler(file_handler)
+            logger.addHandler(memory_handler)
+
+            # Log task start
+            task_session.log_event(
+                "task_started",
+                metadata={"query": query}
+            )
+
+            logger.info(f"Starting task {task_id} with query: {query}")
+            logger.debug(f"Processing query: {query} in {'mock' if os.environ.get('API_MODE') == 'mock' else 'online'} mode")
+
+            try:
+                # Create agents
+                logger.info("Creating agents from configuration")
+                agents = {}
+                for name, config in self.agent_configs.items():
+                    agent, session = self.create_agent(name, config)
+                    agents[name] = agent
+                    agent_sessions[name] = session
+
+                logger.debug(f"Created {len(agents)} agents: {', '.join(agents.keys())}")
+
+                # Create tasks in the correct order based on dependencies
+                tasks = []
+                task_ids = []  # Store corresponding task IDs
+                for task_name, config in self.task_configs.items():
+                    logger.debug(f"Creating task: {task_name} with agent: {config['agent']}")
+                    agent = agents[config['agent']]
+                    task, tracking_id = self.create_task(task_name, config, agent, query)
+                    tasks.append(task)
+                    task_ids.append(tracking_id)
+                    logger.debug(f"Task {task_name} created with tracking ID: {tracking_id}")
+
+                    # Log subtask creation
+                    task_session.log_event(
+                        "subtask_created",
+                        metadata={
+                            "task_name": task_name,
+                            "tracking_id": tracking_id,
+                            "agent": config['agent']
+                        }
+                    )
+
+                # Create and run crew
+                logger.info("Initializing CrewAI crew")
+                crew = Crew(
+                    agents=list(agents.values()),
+                    tasks=tasks,
+                    verbose=True,
+                    process_name=f"Task {task_id}"
+                )
+
+                # Execute the tasks
+                logger.info(f"Starting crew execution for task {task_id}")
+                result = crew.kickoff()
+
+                # Log successful execution
+                task_session.log_event(
+                    "task_completed",
+                    metadata={"status": "success"}
+                )
+
+                logger.info(f"Task {task_id} completed successfully")
+                logger.debug(f"Raw result: {result}")
+
+                # Update task metadata and format result
+                self.update_task_completion(task_id, task_ids, result)
+
+            except Exception as e:
+                logger.error(f"Task processing error: {str(e)}", exc_info=True)
+                task_session.log_event(
+                    "task_error",
+                    metadata={
+                        "error": str(e),
+                        "error_type": type(e).__name__
+                    }
+                )
+                raise
+
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
+            task_session.log_event(
+                "task_failed",
+                metadata={
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+            )
+            self.handle_task_error(task_id, str(e), query)
+
+        finally:
+            # Clean up handlers
+            if file_handler:
+                logger.removeHandler(file_handler)
+                file_handler.close()
+            if memory_handler:
+                logger.removeHandler(memory_handler)
+
+            # End sessions
+            if task_session:
+                task_session.end()
+            for session in agent_sessions.values():
+                session.end()
+
+    def update_task_completion(self, task_id, task_ids, result):
+        # Update completion status for all tasks
+        for tracking_id in task_ids:
+            self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
+            self.task_logs[tracking_id].append({
+                "timestamp": self.task_metadata[tracking_id]["end_time"],
+                "event": "task_completed",
+                "task_name": self.task_metadata[tracking_id]["name"],
+                "agent": self.task_metadata[tracking_id]["agent_role"]
+            })
+
+        # Format the result as JSON
+        formatted_result = self.format_result(result)
+
+        # Collect all task logs and ensure they're JSON serializable
+        all_task_logs = []
+        for tracking_id in task_ids:
+            logs = self.task_logs[tracking_id]
+            # Ensure each log entry is JSON serializable
+            sanitized_logs = []
+            for log in logs:
+                sanitized_log = {
+                    "timestamp": log["timestamp"],
+                    "event": log["event"],
+                    "message": str(log.get("message", "")),
+                    "task_name": log.get("task_name", ""),
+                    "agent": log.get("agent", ""),
+                    "level": log.get("level", "INFO")
+                }
+                # Add additional fields if present
+                if "tool" in log:
+                    sanitized_log["tool"] = str(log["tool"])
+                    sanitized_log["tool_input"] = str(log.get("input", ""))
+                    sanitized_log["tool_output"] = str(log.get("output", ""))[:500]  # Truncate long outputs
+                if "task_info" in log:
+                    sanitized_log["task_info"] = {
+                        k: str(v) for k, v in log["task_info"].items()
+                    }
+                sanitized_logs.append(sanitized_log)
+            all_task_logs.extend(sanitized_logs)
+
+        # Sort logs by timestamp
+        all_task_logs.sort(key=lambda x: x['timestamp'])
+
+        # Create final JSON output with guaranteed JSON-serializable content
+        output = {
+            "result": formatted_result,
+            "task_logs": all_task_logs,
+            "file_logs": self.read_log_file(log_file),
+            "metadata": {
+                "task_id": task_id,
+                "query": query,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+
+        # Verify JSON serialization before storing
+        json.dumps(output)  # This will raise an error if output is not JSON serializable
+
+        # Store result
+        self.task_queue.update_task(
+            task_id=task_id,
+            status='completed',
+            result=json.dumps(output, ensure_ascii=False)
+        )
+
+
+    def handle_task_error(self, task_id, error_message, query):
+        # Create a safe error output that's guaranteed to be JSON serializable
+        error_output = {
+            "result": {"error": error_message},
+            "task_logs": [
+                {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "event": "error",
+                    "message": error_message,
+                    "level": "ERROR"
+                }
+            ],
+            "metadata": {
+                "task_id": task_id,
+                "query": query,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+        self.task_queue.update_task(
+            task_id=task_id,
+            status='failed',
+            result=json.dumps(error_output, ensure_ascii=False)
+        )
 
     def log_handler(self, task_id):
         """Create a custom log handler that stores logs in memory"""
@@ -189,174 +447,6 @@ Track your progress using this task ID: {task_tracking_id}
         })
 
         return task, task_tracking_id
-
-    def process_task(self, task_id: str, query: str):
-        """Process a task using CrewAI with the configured agents"""
-        try:
-            # Create a task-specific log handler
-            log_file = f'logs/crew_{task_id}.log'
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(logging.DEBUG)
-            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            file_handler.setFormatter(file_formatter)
-
-            # Add memory handler for storing logs
-            memory_handler = self.log_handler(task_id)
-
-            # Add both handlers
-            logger.addHandler(file_handler)
-            logger.addHandler(memory_handler)
-
-            logger.info(f"Starting task {task_id} with query: {query}")
-            logger.debug(f"Processing query: {query} in {'mock' if os.environ.get('API_MODE') == 'mock' else 'online'} mode")
-
-            try:
-                # Create agents
-                logger.info("Creating agents from configuration")
-                agents = {
-                    name: self.create_agent(name, config)
-                    for name, config in self.agent_configs.items()
-                }
-                logger.debug(f"Created {len(agents)} agents: {', '.join(agents.keys())}")
-
-                # Create tasks in the correct order based on dependencies
-                tasks = []
-                task_ids = []  # Store corresponding task IDs
-                logger.info("Creating CrewAI tasks")
-                for task_name, config in self.task_configs.items():
-                    logger.debug(f"Creating task: {task_name} with agent: {config['agent']}")
-                    agent = agents[config['agent']]
-                    task, tracking_id = self.create_task(task_name, config, agent, query)
-                    tasks.append(task)
-                    task_ids.append(tracking_id)
-                    logger.debug(f"Task {task_name} created with tracking ID: {tracking_id}")
-
-                # Create and run crew
-                logger.info("Initializing CrewAI crew")
-                crew = Crew(
-                    agents=list(agents.values()),
-                    tasks=tasks,
-                    verbose=True,  # Enable verbose output for detailed logs
-                    process_name=f"Task {task_id}"  # Add process name for better log identification
-                )
-
-                # Execute the tasks
-                logger.info(f"Starting crew execution for task {task_id}")
-                result = crew.kickoff()
-                logger.info(f"Task {task_id} completed successfully")
-                logger.debug(f"Raw result: {result}")
-
-                # Update completion status for all tasks
-                for tracking_id in task_ids:
-                    self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
-                    self.task_logs[tracking_id].append({
-                        "timestamp": self.task_metadata[tracking_id]["end_time"],
-                        "event": "task_completed",
-                        "task_name": self.task_metadata[tracking_id]["name"],
-                        "agent": self.task_metadata[tracking_id]["agent_role"]
-                    })
-
-                # Format the result as JSON
-                formatted_result = self.format_result(result)
-
-                # Collect all task logs and ensure they're JSON serializable
-                all_task_logs = []
-                for tracking_id in task_ids:
-                    logs = self.task_logs[tracking_id]
-                    # Ensure each log entry is JSON serializable
-                    sanitized_logs = []
-                    for log in logs:
-                        sanitized_log = {
-                            "timestamp": log["timestamp"],
-                            "event": log["event"],
-                            "message": str(log.get("message", "")),
-                            "task_name": log.get("task_name", ""),
-                            "agent": log.get("agent", ""),
-                            "level": log.get("level", "INFO")
-                        }
-                        # Add additional fields if present
-                        if "tool" in log:
-                            sanitized_log["tool"] = str(log["tool"])
-                            sanitized_log["tool_input"] = str(log.get("input", ""))
-                            sanitized_log["tool_output"] = str(log.get("output", ""))[:500]  # Truncate long outputs
-                        if "task_info" in log:
-                            sanitized_log["task_info"] = {
-                                k: str(v) for k, v in log["task_info"].items()
-                            }
-                        sanitized_logs.append(sanitized_log)
-                    all_task_logs.extend(sanitized_logs)
-
-                # Sort logs by timestamp
-                all_task_logs.sort(key=lambda x: x['timestamp'])
-
-                # Create final JSON output with guaranteed JSON-serializable content
-                output = {
-                    "result": formatted_result,
-                    "task_logs": all_task_logs,
-                    "file_logs": self.read_log_file(log_file),
-                    "metadata": {
-                        "task_id": task_id,
-                        "query": query,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                }
-
-                # Verify JSON serialization before storing
-                json.dumps(output)  # This will raise an error if output is not JSON serializable
-
-                # Store result
-                self.task_queue.update_task(
-                    task_id=task_id,
-                    status='completed',
-                    result=json.dumps(output, ensure_ascii=False)
-                )
-
-            except json.JSONDecodeError as je:
-                logger.error(f"JSON serialization error: {str(je)}")
-                raise
-            except Exception as e:
-                logger.error(f"Task processing error: {str(e)}", exc_info=True)
-                raise
-
-            # Clean up
-            logger.removeHandler(file_handler)
-            logger.removeHandler(memory_handler)
-            file_handler.close()
-
-            # Keep log file for debugging
-            logger.info(f"Task logs saved to {log_file}")
-
-        except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
-            # Create a safe error output that's guaranteed to be JSON serializable
-            error_output = {
-                "result": {"error": str(e)},
-                "task_logs": [
-                    {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "event": "error",
-                        "message": str(e),
-                        "level": "ERROR"
-                    }
-                ],
-                "metadata": {
-                    "task_id": task_id,
-                    "query": query,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            }
-            self.task_queue.update_task(
-                task_id=task_id,
-                status='failed',
-                result=json.dumps(error_output, ensure_ascii=False)
-            )
-
-            # Clean up in case of error
-            if 'file_handler' in locals():
-                logger.removeHandler(file_handler)
-                file_handler.close()
-            if 'memory_handler' in locals():
-                logger.removeHandler(memory_handler)
 
     def read_log_file(self, log_file):
         """Read and return the contents of a log file"""

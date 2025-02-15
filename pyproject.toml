@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "agentops>=0.3.26",
     "crewai>=0.102.0",
     "email-validator>=2.2.0",
     "flask>=3.1.0",
