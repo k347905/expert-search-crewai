@@ -133,15 +133,16 @@ class CrewManager:
         file_handler = None
         memory_handler = None
         agent_sessions = {}
+        log_file = None  # Initialize log_file variable
 
-        # Start task session
+        # Start task session with task_id as a tag
         task_session = agentops.init(
-            session_id=task_id,
-            tags=["crew_task"],
+            tags=["crew_task", f"task_{task_id}"],
             instrument_llm_calls=True
         )
         task_session.set_metadata({
             "task_type": "crew_task",
+            "task_id": task_id,
             "query": query
         })
 
@@ -224,7 +225,7 @@ class CrewManager:
                 logger.debug(f"Raw result: {result}")
 
                 # Update task metadata and format result
-                self.update_task_completion(task_id, task_ids, result)
+                self.update_task_completion(task_id, task_ids, result, query, log_file)
 
             except Exception as e:
                 logger.error(f"Task processing error: {str(e)}", exc_info=True)
@@ -262,7 +263,8 @@ class CrewManager:
             for session in agent_sessions.values():
                 session.end()
 
-    def update_task_completion(self, task_id, task_ids, result):
+    def update_task_completion(self, task_id, task_ids, result, query, log_file):
+        """Update task completion status and store results"""
         # Update completion status for all tasks
         for tracking_id in task_ids:
             self.task_metadata[tracking_id]["end_time"] = datetime.utcnow().isoformat()
@@ -327,7 +329,6 @@ class CrewManager:
             status='completed',
             result=json.dumps(output, ensure_ascii=False)
         )
-
 
     def handle_task_error(self, task_id, error_message, query):
         # Create a safe error output that's guaranteed to be JSON serializable
