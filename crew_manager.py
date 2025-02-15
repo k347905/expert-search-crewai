@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 import agentops
 from agentops.session import Session
+import time  # Added for retry delays
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ class CrewManager:
             agentops.configure(
                 api_key=agentops_api_key,
                 instrument_llm_calls=True,
-                auto_start_session=False
+                auto_start_session=True,  # Enable auto-start
+                max_wait_time=10000,  # Increase timeout
+                max_queue_size=100
             )
             logger.debug("AgentOps configured successfully")
         except Exception as e:
@@ -59,26 +62,52 @@ class CrewManager:
             raise
 
     def create_session(self, tags=None, metadata=None):
-        """Helper method to create and verify AgentOps session"""
-        try:
-            logger.debug(f"Creating AgentOps session with tags: {tags}")
-            session = agentops.init(
-                tags=tags or [],
-                instrument_llm_calls=True
-            )
+        """Helper method to create and verify AgentOps session with retries"""
+        max_retries = 3
+        retry_count = 0
 
-            if session is None:
-                logger.error("Failed to create AgentOps session - returned None")
-                raise RuntimeError("Failed to create AgentOps session")
+        while retry_count < max_retries:
+            try:
+                logger.debug(f"Creating AgentOps session (attempt {retry_count + 1}/{max_retries})")
+                logger.debug(f"Tags: {tags}")
+                logger.debug("Checking AgentOps configuration...")
 
-            if metadata:
-                logger.debug(f"Setting session metadata: {metadata}")
-                session.set_metadata(metadata)
+                # Verify API key is properly set
+                api_key = os.environ.get("AGENTOPS_API_KEY")
+                if not api_key:
+                    raise ValueError("AGENTOPS_API_KEY environment variable is not set")
 
-            return session
-        except Exception as e:
-            logger.error(f"Error creating AgentOps session: {str(e)}")
-            raise
+                logger.debug("Creating new session...")
+                session = agentops.init(
+                    tags=tags or [],
+                    instrument_llm_calls=True,
+                    auto_start_session=True  # Try with auto_start enabled
+                )
+
+                if session is None:
+                    raise RuntimeError("AgentOps init returned None - session creation failed")
+
+                logger.debug("Session created successfully")
+
+                if metadata:
+                    logger.debug(f"Setting session metadata: {metadata}")
+                    try:
+                        session.set_metadata(metadata)
+                        logger.debug("Metadata set successfully")
+                    except Exception as e:
+                        logger.error(f"Failed to set session metadata: {str(e)}")
+                        raise
+
+                return session
+
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"Session creation attempt {retry_count} failed: {str(e)}")
+                if retry_count >= max_retries:
+                    logger.error("Max retries reached for session creation")
+                    raise RuntimeError(f"Failed to create AgentOps session after {max_retries} attempts: {str(e)}")
+                logger.debug(f"Retrying session creation in 1 second...")
+                time.sleep(1)  # Add a small delay between retries
 
     def create_agent(self, agent_name, config):
         """Create a CrewAI agent from configuration"""
@@ -249,7 +278,6 @@ class CrewManager:
                     }
                 )
             raise
-
         finally:
             # Clean up handlers
             if file_handler:
