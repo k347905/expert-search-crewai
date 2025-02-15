@@ -10,43 +10,41 @@ import threading
 import json
 from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure basic logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Constants
 CONFIG_FILE = 'config.json'
+SWAGGER_URL = '/swagger'
+API_URL = '/static/swagger.json'
 
 def load_config():
-    """Load configuration from JSON file"""
     try:
         if Path(CONFIG_FILE).exists():
             with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
     except Exception as e:
         logger.error(f"Error loading config: {str(e)}")
-    return {'search_mode': 'online'}  # Default configuration
+    return {'search_mode': 'online'}
 
 def save_config(config):
-    """Save configuration to JSON file"""
     try:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f)
     except Exception as e:
         logger.error(f"Error saving config: {str(e)}")
 
-# Update Configuration and Environment Variable
-os.environ["API_MODE"] = load_config().get('search_mode', 'online')
-
 # Initialize Flask app
 app = Flask(__name__)
-
-# Configure Flask app
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key-here")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
+app.config.update(
+    SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL"),
+    SQLALCHEMY_ENGINE_OPTIONS={
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
+)
 
 # Initialize extensions
 db.init_app(app)
@@ -56,32 +54,24 @@ from tasks import TaskQueue
 from crew_manager import CrewManager
 import tools.search_1688 as search_tool
 
-# Initialize task queue and crew manager
+# Initialize core components
 task_queue = TaskQueue()
 crew_manager = CrewManager()
 
-# Load Configuration
-app.config['search_mode'] = load_config().get('search_mode', 'online')
-# Sync API_MODE with app configuration
+# Load and sync configuration
+config = load_config()
+app.config['search_mode'] = config.get('search_mode', 'online')
 os.environ["API_MODE"] = app.config['search_mode']
-logger.debug(f"Initial search mode set to: {app.config['search_mode']}")
 
-
-# Swagger configuration
-SWAGGER_URL = '/swagger'
-API_URL = '/static/swagger.json'
-
+# Setup Swagger
 swaggerui_blueprint = get_swaggerui_blueprint(
     SWAGGER_URL,
     API_URL,
-    config={
-        'app_name': "CrewAI Task API"
-    }
+    config={'app_name': "CrewAI Task API"}
 )
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 def generate_task_token(task_id):
-    """Generate JWT token for task tracking"""
     payload = {
         'task_id': task_id,
         'exp': datetime.utcnow() + timedelta(days=1)
@@ -89,70 +79,38 @@ def generate_task_token(task_id):
     return jwt.encode(payload, app.secret_key, algorithm='HS256')
 
 def process_task_async(task_id, task_description):
-    """Process task asynchronously"""
     with app.app_context():
         try:
-            logger.info(f"Starting task {task_id} processing")
             crew_manager.process_task(task_id, task_description)
-            logger.info(f"Task {task_id} completed successfully")
         except Exception as e:
-            logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
+            logger.error(f"Error processing task {task_id}: {str(e)}")
             task_queue.update_task(task_id, 'failed', str(e))
 
+# Routes
 @app.route('/')
 def home():
-    """Redirect root to Swagger UI"""
     return render_template('docs.html')
 
 @app.route('/tasks')
 def task_dashboard():
-    """Display task monitoring dashboard"""
-    tasks = task_queue.get_all_tasks()
     return render_template('tasks.html', 
-                         tasks=tasks, 
+                         tasks=task_queue.get_all_tasks(), 
                          search_mode=app.config['search_mode'])
 
 @app.route('/tasks/<task_id>/logs')
 def task_logs(task_id):
-    """Display logs for a specific task"""
     task = task_queue.get_task(task_id)
     if not task:
         return jsonify({'error': 'Task not found'}), 404
 
     try:
-        # Get the raw result string
-        result_str = task.get('result', '{}')
-        logger.debug(f"Raw result string for task {task_id}: {result_str[:200]}...")  # Log first 200 chars
-
-        # Parse the JSON
-        result = json.loads(result_str)
-
-        # Prepare logs structure with defaults
+        result = json.loads(task.get('result', '{}'))
         logs = {
             'task_logs': result.get('task_logs', []),
             'file_logs': result.get('file_logs', ''),
             'metadata': result.get('metadata', {})
         }
-
-        # Validate log structure
-        if not isinstance(logs['task_logs'], list):
-            logs['task_logs'] = []
-        if not isinstance(logs['file_logs'], str):
-            logs['file_logs'] = str(logs['file_logs'])
-        if not isinstance(logs['metadata'], dict):
-            logs['metadata'] = {}
-
-        logger.debug(f"Processed logs structure: {str(logs)[:200]}...")  # Log first 200 chars
-
         return render_template('task_logs.html', task_id=task_id, logs=logs)
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Error parsing task logs for {task_id}: {str(e)}")
-        return render_template('task_logs.html', task_id=task_id, logs={
-            'task_logs': [],
-            'file_logs': f"Error parsing logs: {str(e)}",
-            'metadata': {'error': str(e)}
-        })
     except Exception as e:
         logger.error(f"Error processing task logs: {str(e)}")
         return render_template('task_logs.html', task_id=task_id, logs={
@@ -163,32 +121,21 @@ def task_logs(task_id):
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
-    """Create a new task"""
     try:
         data = request.get_json()
         if not data or 'task' not in data or 'user_id' not in data:
             return jsonify({'error': 'Missing task description or user_id'}), 400
 
-        # Get optional webhook URL
         webhook_url = data.get('webhook_url')
-
-        # Validate webhook URL if provided
         if webhook_url:
             from urllib.parse import urlparse
-            try:
-                result = urlparse(webhook_url)
-                if not all([result.scheme, result.netloc]):
-                    return jsonify({'error': 'Invalid webhook URL'}), 400
-            except Exception:
+            if not all([urlparse(webhook_url).scheme, urlparse(webhook_url).netloc]):
                 return jsonify({'error': 'Invalid webhook URL'}), 400
 
         task_id = task_queue.add_task(data['task'], data['user_id'], webhook_url)
         token = generate_task_token(task_id)
-
-        # Store token in task metadata for dashboard access
         task_queue.update_task_metadata(task_id, {'token': token})
 
-        # Start task processing in a background thread
         thread = threading.Thread(
             target=process_task_async,
             args=(task_id, data['task'])
@@ -208,7 +155,6 @@ def create_task():
 
 @app.route('/api/tasks/<task_id>', methods=['GET'])
 def get_task_status(task_id):
-    """Get task status"""
     try:
         token = request.headers.get('Authorization')
         if not token:
@@ -218,8 +164,6 @@ def get_task_status(task_id):
             payload = jwt.decode(token, app.secret_key, algorithms=['HS256'])
             if payload['task_id'] != task_id:
                 return jsonify({'error': 'Invalid token'}), 401
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token expired'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'error': 'Invalid token'}), 401
 
@@ -233,10 +177,8 @@ def get_task_status(task_id):
         logger.error(f"Error getting task status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
-# Add debug logging for search mode changes
 @app.route('/api/config/search_mode', methods=['POST'])
 def update_search_mode():
-    """Update search mode configuration"""
     try:
         data = request.get_json()
         if not data or 'mode' not in data:
@@ -246,24 +188,18 @@ def update_search_mode():
         if mode not in ['online', 'mock']:
             return jsonify({'error': 'Invalid mode value'}), 400
 
-        # Update app configuration and environment variable
         app.config['search_mode'] = mode
         os.environ["API_MODE"] = mode
-        logger.debug(f"Search mode updated to: {mode}")
-        logger.debug(f"API_MODE environment variable set to: {os.environ['API_MODE']}")
 
-        # Save to persistent storage
         config = load_config()
         config['search_mode'] = mode
         save_config(config)
-        logger.debug("Configuration saved to file")
 
         return jsonify({'mode': mode}), 200
 
     except Exception as e:
         logger.error(f"Error updating search mode: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-
 
 @app.errorhandler(404)
 def not_found(error):
