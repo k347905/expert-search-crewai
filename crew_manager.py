@@ -49,9 +49,21 @@ class CrewManager:
         """Create a CrewAI agent from configuration"""
         logger.debug(f"Creating agent: {agent_name}")
 
-        # Assign tools based on agent role
+        # Define tool documentation for search1688
+        search_tool_docs = """
+        Search items on 1688.com using the API.
+
+        Args:
+            query (str): Search keyword.
+            page (int): Page number (default: 1).
+            page_size (int): Number of items per page (default: 20).
+            sort (str): Sorting method (default: "sales").
+        """
+
+        # Assign tools based on agent role with enhanced documentation
         tools = []
         if agent_name == "search_expert":
+            search1688.description = search_tool_docs
             tools = [search1688]
         elif agent_name == "detail_extraction_agent":
             tools = [item_detail]
