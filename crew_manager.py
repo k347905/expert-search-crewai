@@ -197,41 +197,8 @@ class CrewManager:
                     else:
                         parsed_result = {"raw_output": result_str}
 
-                # Ensure we have the correct structure
-                if "items" in parsed_result:
-                    # Process each item to extract available data
-                    for item in parsed_result["items"]:
-                        # Extract sale info if available
-                        if 'sale_info' in item:
-                            item['orders_count'] = str(item['sale_info'].get('sale_quantity_90days', 0))
-                            item['repurchase_rate'] = str(item.get('repurchase_rate', 'No data available'))
-                        else:
-                            item['orders_count'] = str(item.get('sale_count', 0))
-                            item['repurchase_rate'] = str(item.get('repurchase_rate', 'No data available'))
-
-                        # Ensure item score is present
-                        item['item_score'] = str(item.get('item_score', 'No data available'))
-
-                        # Handle price information
-                        if 'price_info' in item:
-                            item['price'] = str(item['price_info'].get('price', 0))
-                        else:
-                            item['price'] = str(item.get('price', 0))
-
-                        # Extract props_names from skus if available
-                        if 'skus' in item and len(item['skus']) > 0:
-                            item['props_names'] = item['skus'][0].get('props_names', '')
-
-                    return {
-                        "items": parsed_result.get("items", []),
-                        "metadata": {
-                            "query": query,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    }
-
                 return {
-                    "items": [],
+                    "items": parsed_result.get("items", []),
                     "metadata": {
                         "query": query,
                         "timestamp": datetime.utcnow().isoformat()

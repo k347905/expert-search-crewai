@@ -88,15 +88,13 @@ def search1688(query: str,
         items = []
         for item in data.get("data", {}).get("items", []):
             formatted_item = {
-                "name_cn": item.get("title", ""),
-                "item_id": item.get("item_id", ""),
-                "url": item.get("product_url", ""),
                 "title": item.get("title", ""),
+                "item_id": item.get("item_id", ""),
+                "product_url": item.get("product_url", ""),
                 "item_score": str(item.get("goods_score", "No data available")),
                 "repurchase_rate": str(item.get("item_repurchase_rate", "No data available")),
                 "orders_count": str(item.get("sale_info", {}).get("orders_count", 0)),
                 "price": item.get("price", ""),
-                "product_url": item.get("product_url", "")
             }
             items.append(formatted_item)
         logger.info(f"Successfully processed {len(items)} items")
@@ -112,7 +110,7 @@ def item_detail(item_id: str) -> dict:
     """Get detailed information about an item on 1688.com using its item_id.
 
     Args:
-        item_id (str): The unique identifier of the item.
+        item_id (int): The unique identifier of the item.
 
     Returns:
         dict: Detailed item information if successful; otherwise, an empty dictionary.
