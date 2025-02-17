@@ -181,20 +181,51 @@ class CrewManager:
                 result_str = str(result)
 
             # Parse the result
-            start_idx = result_str.find('{')
-            end_idx = result_str.rfind('}')
-            if start_idx >= 0 and end_idx > start_idx:
-                parsed_result = json.loads(result_str[start_idx:end_idx + 1])
-            else:
-                parsed_result = {"raw_output": result_str}
+            try:
+                # Try to find a valid JSON object with "items" array
+                start_idx = result_str.find('{')
+                end_idx = result_str.rfind('}')
+                if start_idx >= 0 and end_idx > start_idx:
+                    parsed_result = json.loads(result_str[start_idx:end_idx + 1])
+                else:
+                    # Try to find an array of items directly
+                    start_idx = result_str.find('[')
+                    end_idx = result_str.rfind(']')
+                    if start_idx >= 0 and end_idx > start_idx:
+                        items = json.loads(result_str[start_idx:end_idx + 1])
+                        parsed_result = {"items": items}
+                    else:
+                        parsed_result = {"raw_output": result_str}
 
-            return {
-                "items": parsed_result.get("items", [parsed_result]),
-                "metadata": {
-                    "query": query,
+                # Ensure we have the correct structure
+                if "items" in parsed_result:
+                    # Validate each item has the required fields
+                    for item in parsed_result["items"]:
+                        # Ensure all required fields are present
+                        required_fields = [
+                            "item_id", "title", "price", "product_url",
+                            "repurchase_rate", "item_score", "orders_count",
+                            "props_names"
+                        ]
+                        for field in required_fields:
+                            if field not in item:
+                                item[field] = None
+
+                return {
+                    "items": parsed_result.get("items", []),
+                    "metadata": {
+                        "query": query,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                }
+
+            except json.JSONDecodeError:
+                logger.error(f"Error parsing result JSON: {result_str}")
+                return {
+                    "error": "Invalid JSON format",
+                    "raw_output": result_str,
                     "timestamp": datetime.utcnow().isoformat()
                 }
-            }
 
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
