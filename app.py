@@ -89,7 +89,7 @@ def process_task_async(task_id, task_description):
 # Routes
 @app.route('/')
 def home():
-    return render_template('docs.html')
+    return jsonify({'status': 'healthy'}), 200
 
 @app.route('/tasks')
 def task_dashboard():
