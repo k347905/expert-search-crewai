@@ -91,7 +91,12 @@ def search1688(query: str,
                 "name_cn": item.get("title", ""),
                 "item_id": item.get("item_id", ""),
                 "url": item.get("product_url", ""),
-                "price": item.get("price", "")
+                "title": item.get("title", ""),
+                "item_score": str(item.get("goods_score", "No data available")),
+                "repurchase_rate": str(item.get("item_repurchase_rate", "No data available")),
+                "orders_count": str(item.get("sale_info", {}).get("orders_count", 0)),
+                "price": item.get("price", ""),
+                "product_url": item.get("product_url", "")
             }
             items.append(formatted_item)
         logger.info(f"Successfully processed {len(items)} items")
