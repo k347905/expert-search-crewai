@@ -124,13 +124,16 @@ class CrewManager:
             "agent_role": agent.role
         }
 
-        # Define expected output format
+        # Define expected output format - Removed redundant original code
         expected_output = {
-            
+            "type": config.get('output_format', {}).get('type', 'dict'),
+            "description": config.get('output_format', {}).get('description', ''),
+            "fields": config.get('output_format', {}).get('fields', {})
         }
 
         task = CrewTask(
             description=config['description'].format(query=query),
+            expected_output=config['expected_output'],
             agent=agent
         )
 
