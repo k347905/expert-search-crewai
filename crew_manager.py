@@ -199,20 +199,39 @@ class CrewManager:
 
                 # Ensure we have the correct structure
                 if "items" in parsed_result:
-                    # Validate each item has the required fields
+                    # Process each item to extract available data
                     for item in parsed_result["items"]:
-                        # Ensure all required fields are present
-                        required_fields = [
-                            "item_id", "title", "price", "product_url",
-                            "repurchase_rate", "item_score", "orders_count",
-                            "props_names"
-                        ]
-                        for field in required_fields:
-                            if field not in item:
-                                item[field] = None
+                        # Extract sale info if available
+                        if 'sale_info' in item:
+                            item['orders_count'] = str(item['sale_info'].get('sale_quantity_90days', 0))
+                            item['repurchase_rate'] = str(item.get('repurchase_rate', 'No data available'))
+                        else:
+                            item['orders_count'] = str(item.get('sale_count', 0))
+                            item['repurchase_rate'] = str(item.get('repurchase_rate', 'No data available'))
+
+                        # Ensure item score is present
+                        item['item_score'] = str(item.get('item_score', 'No data available'))
+
+                        # Handle price information
+                        if 'price_info' in item:
+                            item['price'] = str(item['price_info'].get('price', 0))
+                        else:
+                            item['price'] = str(item.get('price', 0))
+
+                        # Extract props_names from skus if available
+                        if 'skus' in item and len(item['skus']) > 0:
+                            item['props_names'] = item['skus'][0].get('props_names', '')
+
+                    return {
+                        "items": parsed_result.get("items", []),
+                        "metadata": {
+                            "query": query,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    }
 
                 return {
-                    "items": parsed_result.get("items", []),
+                    "items": [],
                     "metadata": {
                         "query": query,
                         "timestamp": datetime.utcnow().isoformat()
