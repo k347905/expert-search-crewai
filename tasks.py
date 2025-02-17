@@ -86,9 +86,20 @@ class TaskQueue:
             items = []
             if task.result:
                 try:
-                    result_data = json.loads(task.result)
-                    if isinstance(result_data, dict) and 'result' in result_data:
-                        items = result_data['result'].get('items', [])
+                    # Parse the raw result string which might contain the full response
+                    result_str = task.result
+                    # Find the first occurrence of an array/list
+                    start_idx = result_str.find('[')
+                    end_idx = result_str.rfind(']')
+
+                    if start_idx >= 0 and end_idx > start_idx:
+                        items_json = result_str[start_idx:end_idx + 1]
+                        items = json.loads(items_json)
+                    else:
+                        # Fallback to previous logic
+                        result_data = json.loads(task.result)
+                        if isinstance(result_data, dict):
+                            items = result_data.get('items', [])
                 except json.JSONDecodeError as je:
                     logger.error(f"JSON decode error for task {task.id}: {str(je)}")
                     items = []
