@@ -100,6 +100,23 @@ json_conversion_task:
     A JSON array where each item contains: name, price, MOQ, and URL.
     Remove all markdown formatting and unnecessary text.
     The output must be valid JSON that can be parsed by JSON.parse().
+
+    "output_json": {
+                "items": [
+                    {
+                        "id": "string",
+                        "name": "string",
+                        "description": "string",
+                        "price": "number",
+                        "url": "string"
+                    }
+                ],
+                "metadata": {
+                    "query": "string",
+                    "timestamp": "string"
+                }
+            }
+   
   agent: json_conversion_agent
   output_format:
     type: json

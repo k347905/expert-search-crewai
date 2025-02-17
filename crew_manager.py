@@ -126,27 +126,12 @@ class CrewManager:
 
         # Define expected output format
         expected_output = {
-            "output_json": {
-                "items": [
-                    {
-                        "id": "string",
-                        "name": "string",
-                        "description": "string",
-                        "price": "number",
-                        "url": "string"
-                    }
-                ],
-                "metadata": {
-                    "query": "string",
-                    "timestamp": "string"
-                }
-            }
+            
         }
 
         task = CrewTask(
             description=config['description'].format(query=query),
-            agent=agent,
-            expected_output=json.dumps(expected_output, indent=2)  # Add expected_output field
+            agent=agent
         )
 
         return task, task_tracking_id
