@@ -66,7 +66,8 @@ json_conversion_task:
   description: >
     Convert the ranked products list into a clean JSON array containing only the essential information.
   expected_output: >
-    A JSON array where each item contains: name, price, MOQ, and URL.
+    A JSON array where each item contains: item_id, title, price, product_url, repurchase_rate, item_score, orders_count, props_names,  price, english title.
+    Generate english title by translating the title field.
     Remove all markdown formatting and unnecessary text.
     The output must be valid JSON that can be parsed by JSON.parse().
 
