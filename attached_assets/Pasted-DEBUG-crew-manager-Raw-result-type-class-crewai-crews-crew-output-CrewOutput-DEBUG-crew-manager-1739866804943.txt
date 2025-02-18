@@ -1,0 +1,64 @@
+DEBUG:crew_manager:Raw result type: <class 'crewai.crews.crew_output.CrewOutput'>
+DEBUG:crew_manager:Raw result: ```json
+{
+    "items": [
+        {
+            "item_id": "576959828830",
+            "title": "金骏眉红茶 高山小种红茶浓香金骏眉批发2024新茶500g散装",
+            "english_title": "Jinjunmei Black Tea High Mountain Small Species Black Tea Rich Aroma Jinjunmei Wholesale 2024 New Tea 500g Loose",
+            "product_url": "https://detail.1688.com/offer/576959828830.html",
+            "repurchase_rate": 0.22,
+            "item_score": 5.0,
+            "orders_count": 1128,
+            "price": null
+        },
+        {
+            "item_id": "1169400302",
+            "title": "2024新茶金骏眉红茶散装小种红茶浓香型茶叶批发金俊眉奶茶原料",
+            "english_title": "2024 New Tea Jinjunmei Black Tea Loose Small Species Black Tea Rich Aroma Tea Leaves Wholesale Jinjunmei Milk Tea Ingredient",
+            "product_url": "https://detail.1688.com/offer/1169400302.html",
+            "repurchase_rate": 0.21,
+            "item_score": 4.0,
+            "orders_count": 6009,
+            "price": null
+        },
+        {
+            "item_id": "42549705240",
+            "title": "武夷高山黄芽金骏眉茶叶散装批发祁门古树蜜香红茶桐木关正山小种",
+            "english_title": "Wuyi High Mountain Yellow Bud Jinjunmei Tea Leaves Loose Wholesale Qimen Ancient Tree Honey Fragrance Black Tea Tongmu Guan Zhengshan Small Species",
+            "product_url": "https://detail.1688.com/offer/42549705240.html",
+            "repurchase_rate": 0.19,
+            "item_score": 5.0,
+            "orders_count": 15038,
+            "price": null
+        },
+        {
+            "item_id": "39846541505",
+            "title": "武夷山桐木关批发高山野茶正山小种古树花蜜香红茶散装金骏眉茶叶",
+            "english_title": "Wuyishan Tongmu Guan Wholesale High Mountain Wild Tea Zhengshan Small Species Ancient Tree Floral Honey Fragrance Black Tea Loose Jinjunmei Tea Leaves",
+            "product_url": "https://detail.1688.com/offer/39846541505.html",
+            "repurchase_rate": 0.18,
+            "item_score": 5.0,
+            "orders_count": 12876,
+            "price": null
+        },
+        {
+            "item_id": "611968457808",
+            "title": "正山小种红茶散装福建武夷年货礼盒装云南滇红茶叶批发金骏眉红茶",
+            "english_title": "Zhengshan Small Species Black Tea Loose Fujian Wuyi New Year Gift Box Yunnan Dianhong Tea Leaves Wholesale Jinjunmei Black Tea",
+            "product_url": "https://detail.1688.com/offer/611968457808.html",
+            "repurchase_rate": 0.19,
+            "item_score": 3.0,
+            "orders_count": 14763,
+            "price": null
+        }
+    ],
+    "metadata": {
+        "query": "jinjunmei tea 500g",
+        "timestamp": "2023-10-10T10:00:00Z"
+    }
+}
+```
+DEBUG:crew_manager:Not final task, returning raw result
+INFO:tasks:Preparing webhook notification for task 272b11fb-5329-4434-a720-ed5004b62cf9 to https://hook.us1.make.com/m7qnoxlwdqghmu2k7tkda2odxgfhtj2p
+ERROR:tasks:JSON decode error for task 272b11fb-5329-4434-a720-ed5004b62cf9: Expecting value: line 1 column 2 (char 1)
