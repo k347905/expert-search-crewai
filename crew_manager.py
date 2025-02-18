@@ -190,8 +190,8 @@ class CrewManager:
             logger.debug(f"Raw result type: {type(result)}")
             logger.debug(f"Raw result: {result}")
             
-            # If this is not the final task result from JSON Data Specialist, return it as is
-            if result.agent.role != 'JSON Data Specialist':
+            # If this is not the final task result, return it as is
+            if isinstance(result.raw, str) and "metadata" not in result.raw:
                 logger.debug("Not final task, returning raw result")
                 return result
 
