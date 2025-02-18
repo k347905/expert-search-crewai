@@ -181,11 +181,16 @@ class CrewManager:
             result_str = self._strip_markdown(result_str)
             
             try:
-                # Extract JSON content
-                parsed_result = self._extract_json(result_str)
+                # If result already contains items, use them directly
+                if isinstance(result, dict) and "items" in result:
+                    items = result["items"]
+                else:
+                    # Extract JSON content
+                    parsed_result = self._extract_json(result_str)
+                    items = parsed_result.get("items", [])
                 
                 return {
-                    "items": parsed_result.get("items", []),
+                    "items": items,
                     "metadata": {
                         "query": query,
                         "timestamp": datetime.utcnow().isoformat()
