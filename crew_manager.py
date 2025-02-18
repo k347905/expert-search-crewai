@@ -176,6 +176,10 @@ class CrewManager:
     def format_result(self, result, query):
         """Format the CrewAI output into our expected JSON structure"""
         try:
+            # If this is not the final task result, return it as is
+            if not hasattr(result, 'task_name') or result.task_name != 'json_conversion_task':
+                return result
+
             # Convert result to string and strip markdown
             result_str = str(result.raw if hasattr(result, 'raw') else result)
             result_str = self._strip_markdown(result_str)
