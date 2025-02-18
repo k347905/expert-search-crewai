@@ -1,0 +1,66 @@
+DEBUG:crew_manager:Raw result: ```json
+{
+    "items": [
+        {
+            "item_id": "42549705240",
+            "title": "武夷高山黄芽金骏眉茶叶散装批发祁门古树蜜香红茶桐木关正山小种",
+            "english_title": "Wuyi Mountain High Mountain Yellow Bud Jinjunmei Tea Loose Wholesale Qimen Ancient Tree Honey Fragrance Black Tea Tongmuguan Zhengshan Xiaozhong",
+            "product_url": "https://detail.1688.com/offer/42549705240.html",
+            "repurchase_rate": 0.19,
+            "item_score": 5.0,
+            "orders_count": 15038,
+            "props_names": "包装规格:金骏眉1号散装500克",
+            "price": 42.00
+        },
+        {
+            "item_id": "39846541505",
+            "title": "武夷山桐木关批发高山野茶正山小种古树花蜜香红茶散装金骏眉茶叶",
+            "english_title": "Wuyi Mountain Tongmuguan Wholesale High Mountain Wild Tea Zhengshan Xiaozhong Ancient Tree Flower Honey Fragrance Black Tea Loose Jinjunmei Tea",
+            "product_url": "https://detail.1688.com/offer/39846541505.html",
+            "repurchase_rate": 0.18,
+            "item_score": 5.0,
+            "orders_count": 12876,
+            "props_names": "包装规格:500克散装（5斤以上拍）",
+            "price": 103.00
+        },
+        {
+            "item_id": "743366188947",
+            "title": "茶叶正山小种红茶散装2023年武夷山新茶金骏眉浓香小种红茶批发",
+            "english_title": "Tea Zhengshan Xiaozhong Black Tea Loose 2023 Wuyi Mountain New Tea Jinjunmei Rich Fragrance Xiaozhong Black Tea Wholesale",
+            "product_url": "https://detail.1688.com/offer/743366188947.html",
+            "repurchase_rate": 0.27,
+            "item_score": 5.0,
+            "orders_count": 525,
+            "props_names": "包装规格:一斤金骏眉红茶1号",
+            "price": 21.00
+        },
+        {
+            "item_id": "750206859799",
+            "title": "武夷山金骏眉红茶春茶散装特级茶叶果香小种小种500克厂家批发",
+            "english_title": "Wuyi Mountain Jinjunmei Black Tea Spring Tea Loose Special Grade Tea Fruit Fragrance Xiaozhong Xiaozhong 500g Manufacturer Wholesale",
+            "product_url": "https://detail.1688.com/offer/750206859799.html",
+            "repurchase_rate": 0.08,
+            "item_score": 5.0,
+            "orders_count": 395,
+            "props_names": "包装规格:果香金骏眉500克",
+            "price": 46.30
+        },
+        {
+            "item_id": "719067941193",
+            "title": "浓香新茶正山小种 金骏眉红茶500g散装小种红茶茶叶金骏眉批发",
+            "english_title": "Rich Fragrance New Tea Zhengshan Xiaozhong Jinjunmei Black Tea 500g Loose Xiaozhong Black Tea Tea Jinjunmei Wholesale",
+            "product_url": "https://detail.1688.com/offer/719067941193.html",
+            "repurchase_rate": 0.26,
+            "item_score": 5.0,
+            "orders_count": 141,
+            "props_names": "包装规格:浓香金骏眉 货号155#",
+            "price": 55.00
+        }
+    ],
+    "metadata": {
+        "query": "jinjunmei tea 500g",
+        "timestamp": "2023-10-08T14:30:00Z"
+    }
+}
+```
+ERROR:crew_manager:Error formatting result: 'CrewOutput' object has no attribute 'agent'
