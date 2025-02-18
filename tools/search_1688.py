@@ -2,6 +2,8 @@ from crewai.tools import BaseTool, tool
 from typing import Type
 from pydantic import BaseModel, Field
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import os
 import json
 import hashlib
@@ -68,7 +70,18 @@ def search1688(query: str,
             return {"items": [], "error": "API token not configured"}
 
         try:
-            response = requests.get(endpoint, params=params, timeout=30)
+            # Configure retry strategy
+            retry_strategy = Retry(
+                total=3,  # number of retries
+                backoff_factor=1,  # wait 1, 2, 4 seconds between retries
+                status_forcelist=[408, 429, 500, 502, 503, 504]  # status codes to retry on
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            session = requests.Session()
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            
+            response = session.get(endpoint, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.debug("Successfully received API response")
@@ -144,7 +157,18 @@ def item_detail(item_id: str) -> dict:
             return {}
 
         try:
-            response = requests.get(endpoint, params=params, timeout=30)
+            # Configure retry strategy
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[408, 429, 500, 502, 503, 504]
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            session = requests.Session()
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            
+            response = session.get(endpoint, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.debug("Successfully received item detail API response")
