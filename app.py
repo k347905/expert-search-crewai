@@ -104,12 +104,7 @@ def task_logs(task_id):
         return jsonify({'error': 'Task not found'}), 404
 
     try:
-        result = json.loads(task.get('result', '{}'))
-        logs = {
-            'task_logs': result.get('task_logs', []),
-            'file_logs': result.get('file_logs', ''),
-            'metadata': result.get('metadata', {})
-        }
+        logs = task.get('logs', []) if isinstance(task.get('logs'), list) else []
         return render_template('task_logs.html', task_id=task_id, logs=logs)
     except Exception as e:
         logger.error(f"Error processing task logs: {str(e)}")
