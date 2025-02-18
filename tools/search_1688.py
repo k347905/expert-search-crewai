@@ -68,7 +68,7 @@ def search1688(query: str,
             return {"items": [], "error": "API token not configured"}
 
         try:
-            response = requests.get(endpoint, params=params, timeout=10)
+            response = requests.get(endpoint, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.debug("Successfully received API response")
@@ -144,7 +144,7 @@ def item_detail(item_id: str) -> dict:
             return {}
 
         try:
-            response = requests.get(endpoint, params=params, timeout=10)
+            response = requests.get(endpoint, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.debug("Successfully received item detail API response")
