@@ -157,6 +157,17 @@ class CrewManager:
         try:
             # Format the result
             formatted_result = self.format_result(result, query)
+            
+            # If result is CrewOutput, extract the raw value
+            if hasattr(formatted_result, 'raw'):
+                formatted_result = formatted_result.raw
+                
+            # If result is string containing JSON, parse it
+            if isinstance(formatted_result, str):
+                try:
+                    formatted_result = json.loads(formatted_result)
+                except json.JSONDecodeError:
+                    pass
 
             # Update task queue
             self.task_queue.update_task(
