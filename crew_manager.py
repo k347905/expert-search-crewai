@@ -190,8 +190,8 @@ class CrewManager:
             logger.debug(f"Raw result type: {type(result)}")
             logger.debug(f"Raw result: {result}")
             
-            # If this is not the final task result, return it as is
-            if not hasattr(result, 'task_name') or result.task_name != 'json_conversion_task':
+            # If this is not the final task result from JSON Data Specialist, return it as is
+            if result.agent.role != 'JSON Data Specialist':
                 logger.debug("Not final task, returning raw result")
                 return result
 
