@@ -8,6 +8,7 @@ from database import db
 from tools.search_1688 import search1688, item_detail
 from datetime import datetime
 import uuid
+import re
 from collections import defaultdict
 import agentops
 
@@ -175,28 +176,14 @@ class CrewManager:
     def format_result(self, result, query):
         """Format the CrewAI output into our expected JSON structure"""
         try:
-            if hasattr(result, 'raw'):
-                result_str = str(result.raw)
-            else:
-                result_str = str(result)
-
-            # Parse the result
+            # Convert result to string and strip markdown
+            result_str = str(result.raw if hasattr(result, 'raw') else result)
+            result_str = self._strip_markdown(result_str)
+            
             try:
-                # Try to find a valid JSON object with "items" array
-                start_idx = result_str.find('{')
-                end_idx = result_str.rfind('}')
-                if start_idx >= 0 and end_idx > start_idx:
-                    parsed_result = json.loads(result_str[start_idx:end_idx + 1])
-                else:
-                    # Try to find an array of items directly
-                    start_idx = result_str.find('[')
-                    end_idx = result_str.rfind(']')
-                    if start_idx >= 0 and end_idx > start_idx:
-                        items = json.loads(result_str[start_idx:end_idx + 1])
-                        parsed_result = {"items": items}
-                    else:
-                        parsed_result = {"raw_output": result_str}
-
+                # Extract JSON content
+                parsed_result = self._extract_json(result_str)
+                
                 return {
                     "items": parsed_result.get("items", []),
                     "metadata": {
@@ -204,15 +191,13 @@ class CrewManager:
                         "timestamp": datetime.utcnow().isoformat()
                     }
                 }
-
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as je:
                 logger.error(f"Error parsing result JSON: {result_str}")
                 return {
                     "error": "Invalid JSON format",
                     "raw_output": result_str,
                     "timestamp": datetime.utcnow().isoformat()
                 }
-
         except Exception as e:
             logger.error(f"Error formatting result: {str(e)}")
             return {
@@ -220,3 +205,28 @@ class CrewManager:
                 "raw_output": str(result),
                 "timestamp": datetime.utcnow().isoformat()
             }
+
+    def _strip_markdown(self, text):
+        """Remove markdown formatting from text"""
+        # Remove code blocks
+        text = re.sub(r'```(?:json)?\s*(.*?)\s*```', r'\1', text, flags=re.DOTALL)
+        # Remove inline code
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        return text.strip()
+
+    def _extract_json(self, text):
+        """Extract and parse JSON content from text"""
+        # Try to find a valid JSON object with "items" array
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+        if start_idx >= 0 and end_idx > start_idx:
+            return json.loads(text[start_idx:end_idx + 1])
+            
+        # Try to find an array of items directly
+        start_idx = text.find('[')
+        end_idx = text.rfind(']')
+        if start_idx >= 0 and end_idx > start_idx:
+            items = json.loads(text[start_idx:end_idx + 1])
+            return {"items": items}
+            
+        return {"raw_output": text}
